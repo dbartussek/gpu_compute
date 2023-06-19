@@ -1,53 +1,33 @@
-use itertools::Itertools;
-use lazy_static::lazy_static;
-use renderdoc::{RenderDoc, V110};
+use nalgebra::Vector2;
+use smallvec::smallvec;
 use std::{
     collections::{hash_map::Entry, HashMap},
-    ffi::c_void,
-    iter::once,
-    ops::Deref,
-    ptr::null,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        CopyImageToBufferInfo, PrimaryAutoCommandBuffer, PrimaryCommandBufferAbstract,
-        RenderPassBeginInfo, SubpassContents,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
+        CommandBufferUsage, CopyBufferToImageInfo, CopyImageToBufferInfo, PrimaryAutoCommandBuffer,
     },
     device::{
-        physical::PhysicalDeviceType, Device, DeviceCreateInfo, Queue, QueueCreateInfo, QueueFlags,
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceOwned, Queue, QueueCreateInfo, QueueFlags,
     },
-    format::{ClearValue, Format},
+    format::Format,
     image::{
-        view::ImageView, AttachmentImage, ImageAccess, ImageDimensions, ImageUsage, ImmutableImage,
-        MipmapsCount,
+        AttachmentImage, ImageAccess, ImageCreateFlags, ImageDimensions, ImageSubresourceLayers,
+        ImageUsage, ImmutableImage, MipmapsCount, StorageImage,
     },
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        graphics::{
-            color_blend::ColorBlendState,
-            input_assembly::{InputAssemblyState, PrimitiveTopology},
-            vertex_input::Vertex,
-            viewport::{Viewport, ViewportState},
-        },
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
-    },
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
-    sampler::{Sampler, SamplerCreateInfo},
-    single_pass_renderpass,
-    sync::GpuFuture,
-    VulkanLibrary,
+    pipeline::graphics::vertex_input::Vertex,
+    render_pass::RenderPass,
+    single_pass_renderpass, VulkanLibrary,
 };
 
-const DATA_SIZE: u32 = 1024;
-
 pub struct VulkanData {
+    pub physical_device: Arc<PhysicalDevice>,
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
     pub memory_allocator: StandardMemoryAllocator,
@@ -59,18 +39,18 @@ pub struct VulkanData {
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub struct RenderPassKey {
-    pub format: Format,
+    pub format: Option<Format>,
 }
 
 #[derive(BufferContents, Vertex)]
 #[repr(C)]
 pub struct MVertex {
     #[format(R32G32_SFLOAT)]
-    position: [f32; 2],
+    pub position: Vector2<f32>,
 }
 
 impl VulkanData {
-    fn init() -> Self {
+    pub fn init() -> Self {
         let library = VulkanLibrary::new().unwrap();
 
         let instance = Instance::new(
@@ -127,16 +107,16 @@ impl VulkanData {
 
         let vertices = [
             MVertex {
-                position: [-1.0, -1.0],
+                position: [-1.0, -1.0].into(),
             },
             MVertex {
-                position: [-1.0, 1.0],
+                position: [-1.0, 1.0].into(),
             },
             MVertex {
-                position: [1.0, -1.0],
+                position: [1.0, -1.0].into(),
             },
             MVertex {
-                position: [1.0, 1.0],
+                position: [1.0, 1.0].into(),
             },
         ];
         let vertex_buffer = Buffer::from_iter(
@@ -154,6 +134,7 @@ impl VulkanData {
         .unwrap();
 
         Self {
+            physical_device,
             device,
             queue,
             memory_allocator,
@@ -172,10 +153,10 @@ impl VulkanData {
         .unwrap()
     }
 
-    pub fn create_target_image(&self, size: u32, format: Format) -> Arc<AttachmentImage> {
+    pub fn create_target_image(&self, size: Vector2<u32>, format: Format) -> Arc<AttachmentImage> {
         AttachmentImage::with_usage(
             &self.memory_allocator,
-            [size, 1],
+            size.into(),
             format,
             ImageUsage::TRANSFER_SRC,
         )
@@ -187,20 +168,30 @@ impl VulkanData {
             Entry::Occupied(e) => e.get().clone(),
             Entry::Vacant(e) => e
                 .insert(
-                    single_pass_renderpass!(self.device.clone(),
-                        attachments: {
-                            color: {
-                                load: Clear,
-                                store: Store,
-                                format: key.format,
-                                samples: 1,
+                    if let Some(format) = key.format {
+                        single_pass_renderpass!(self.device.clone(),
+                            attachments: {
+                                color: {
+                                    load: Clear,
+                                    store: Store,
+                                    format: format,
+                                    samples: 1,
+                                },
                             },
-                        },
-                        pass: {
-                            color: [color],
-                            depth_stencil: {},
-                        },
-                    )
+                            pass: {
+                                color: [color],
+                                depth_stencil: {},
+                            },
+                        )
+                    } else {
+                        single_pass_renderpass!(self.device.clone(),
+                            attachments: {},
+                            pass: {
+                                color: [],
+                                depth_stencil: {},
+                            },
+                        )
+                    }
                     .unwrap(),
                 )
                 .clone(),
@@ -268,7 +259,7 @@ impl VulkanData {
         read_buffer
     }
 
-    pub fn create_1d_data_image<Px, I>(
+    pub fn create_1d_data_sample_image<Px, I>(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         iter: I,
@@ -303,168 +294,75 @@ impl VulkanData {
         )
         .unwrap()
     }
-}
 
-fn main() {
-    let mut vulkan = VulkanData::init();
+    pub fn create_1d_data_storage_image<Px, I>(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        iter: I,
+        format: Format,
+    ) -> Arc<StorageImage>
+    where
+        Px: BufferContents,
+        I: IntoIterator<Item = Px>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let pixel_bits = format
+            .components()
+            .iter()
+            .copied()
+            .map(|i| i as usize)
+            .sum::<usize>();
+        assert_eq!(pixel_bits, std::mem::size_of::<Px>() * 8);
 
-    capture(|| {
-        let mut command_buffer = vulkan.create_command_buffer();
+        let iter = iter.into_iter();
+        let size = iter.len();
 
-        let target = vulkan.create_target_image(DATA_SIZE, Format::R32_UINT);
-        let render_pass = vulkan.create_render_pass(RenderPassKey {
-            format: target.format(),
-        });
-
-        let framebuffer = Framebuffer::new(
-            render_pass.clone(),
-            FramebufferCreateInfo {
-                attachments: vec![ImageView::new_default(target.clone()).unwrap()],
+        let source = Buffer::from_iter(
+            &self.memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
-        )
-        .unwrap();
-
-        let vert = vs::load(vulkan.device.clone()).unwrap();
-        let frag = fs::load(vulkan.device.clone()).unwrap();
-
-        let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let pipeline = GraphicsPipeline::start()
-            .vertex_input_state(MVertex::per_vertex())
-            .vertex_shader(vert.entry_point("main").unwrap(), ())
-            .input_assembly_state(
-                InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
-            )
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .fragment_shader(frag.entry_point("main").unwrap(), ())
-            .color_blend_state(ColorBlendState::new(subpass.num_color_attachments()))
-            .render_pass(subpass)
-            .build(vulkan.device.clone())
-            .unwrap();
-
-        let data = vulkan.create_1d_data_image(
-            &mut command_buffer,
-            (0u32..(DATA_SIZE as _)).into_iter().collect_vec(),
-            Format::R32_UINT,
-        );
-
-        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(vulkan.device.clone());
-        let sampler = Sampler::new(vulkan.device.clone(), SamplerCreateInfo::default()).unwrap();
-        let set = PersistentDescriptorSet::new(
-            &descriptor_set_allocator,
-            pipeline.layout().set_layouts().get(0).unwrap().clone(),
-            [WriteDescriptorSet::image_view_sampler(
-                0,
-                ImageView::new_default(data).unwrap(),
-                sampler,
-            )],
-        )
-        .unwrap();
-
-        command_buffer
-        .begin_render_pass(
-            RenderPassBeginInfo {
-                clear_values: vec![Some(ClearValue::Uint([0; 4]))],
-                ..RenderPassBeginInfo::framebuffer(framebuffer)
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
             },
-            SubpassContents::Inline,
+            iter,
         )
-        .unwrap()
-
-        // Actual rendering
-        .set_viewport(0, once(Viewport{
-            origin: [0.0, 0.0],
-            dimensions: [DATA_SIZE as f32, 1.0],
-            depth_range: 0.0..1.0
-        }))
-        .bind_pipeline_graphics(pipeline.clone())
-        .bind_descriptor_sets(
-            PipelineBindPoint::Graphics,
-            pipeline.layout().clone(),
-            0,
-            set,
-        )
-        .bind_vertex_buffers(0, vulkan.vertex_buffer())
-        .draw(vulkan.vertex_buffer().len() as _, 1, 0, 0)
-        .unwrap()
-
-        // End rendering
-        .end_render_pass()
         .unwrap();
 
-        let read_buffer: Subbuffer<[u32]> =
-            vulkan.download_image(&mut command_buffer, target.clone());
+        let image = StorageImage::with_usage(
+            &self.memory_allocator,
+            ImageDimensions::Dim1d {
+                width: size as _,
+                array_layers: 1,
+            },
+            format,
+            ImageUsage::TRANSFER_DST | ImageUsage::STORAGE,
+            ImageCreateFlags::empty(),
+            source
+                .device()
+                .active_queue_family_indices()
+                .iter()
+                .copied(),
+        )
+        .unwrap();
 
-        let future = command_buffer
-            .build()
-            .unwrap()
-            .execute(vulkan.queue.clone())
+        let region = BufferImageCopy {
+            image_subresource: ImageSubresourceLayers::from_parameters(
+                format,
+                image.dimensions().array_layers(),
+            ),
+            image_extent: image.dimensions().width_height_depth(),
+            ..Default::default()
+        };
+        command_buffer
+            .copy_buffer_to_image(CopyBufferToImageInfo {
+                regions: smallvec![region],
+                ..CopyBufferToImageInfo::buffer_image(source, image.clone())
+            })
             .unwrap();
-        let fence = future.then_signal_fence_and_flush().unwrap();
-        fence.wait(None).unwrap();
 
-        let data = read_buffer.read().unwrap();
-        let data = data.deref();
-        // println!("{:?}", &data[..(DATA_SIZE as usize / 2)]);
-        // println!("{:?}", &data[(DATA_SIZE as usize / 2)..]);
-
-        for (a, b) in data.iter().copied().zip(0..) {
-            assert_eq!(a, b);
-        }
-    });
-}
-
-fn capture<F, R>(function: F) -> R
-where
-    F: FnOnce() -> R,
-{
-    lazy_static! {
-        static ref RENDERDOC: Option<Mutex<RenderDoc<V110>>> =
-            RenderDoc::<V110>::new().ok().map(Mutex::new);
-    }
-
-    let mut renderdoc = (*RENDERDOC).as_ref().map(|r| r.lock().unwrap());
-
-    if let Some(doc) = renderdoc.as_mut() {
-        doc.start_frame_capture(null::<c_void>(), null::<c_void>());
-    }
-
-    let result = function();
-
-    if let Some(doc) = renderdoc.as_mut() {
-        doc.end_frame_capture(null::<c_void>(), null::<c_void>());
-    }
-
-    result
-}
-
-mod vs {
-    vulkano_shaders::shader! {
-        ty: "vertex",
-        src: r"
-            #version 450
-            layout(location = 0) in vec2 position;
-            layout(location = 0) out float tex_coord;
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-                tex_coord = (position.x + 1) / 2;
-            }
-        ",
-    }
-}
-
-mod fs {
-    vulkano_shaders::shader! {
-        ty: "fragment",
-        src: r"
-            #version 450
-            layout(location = 0) in float tex_coord;
-            layout(location = 0) out uvec4 f_color;
-            layout(set = 0, binding = 0) uniform usampler1D tex;
-
-            void main() {
-                f_color = texture(tex, tex_coord);
-            }
-        ",
+        image
     }
 }

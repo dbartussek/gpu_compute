@@ -3,9 +3,34 @@ name = "gpu_compute"
 version = "0.1.0"
 edition = "2021"
 
+[profile.dev]
+opt-level = 3
+
 [dependencies]
+byte-unit = "4.0.19"
+bytemuck = "1.13.1"
+derivative = "2.2.0"
 itertools = "0.10.5"
 lazy_static = "1.4.0"
+nalgebra = { version = "0.32.2", features = ["bytemuck"] }
 renderdoc = "0.11.0"
+serde = { version = "1.0.164", features = ["derive"] }
+serde_json = "1.0.97"
+smallstr = { version = "0.3.0", features = ["serde", "union"] }
+smallvec = { version = "1.10.0", features = ["serde", "union"] }
 vulkano = "0.33.0"
 vulkano-shaders = "0.33.0"
+
+[dev-dependencies]
+criterion = { version = "0.4", features = ["html_reports"] }
+
+[build-dependencies]
+cc = "1.0"
+
+[[bench]]
+name = "basic"
+harness = false
+
+[[bench]]
+name = "cpu_perf"
+harness = false
