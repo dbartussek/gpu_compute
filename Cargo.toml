@@ -32,5 +32,9 @@ name = "basic"
 harness = false
 
 [[bench]]
+name = "buffer"
+harness = false
+
+[[bench]]
 name = "cpu_perf"
 harness = false

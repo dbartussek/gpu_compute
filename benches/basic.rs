@@ -1,6 +1,8 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use gpu_compute::{
-    an_external_function, do_virtual_call, execute_util::ExecuteUtil, vulkan_util::VulkanData,
+    an_external_function, do_virtual_call,
+    execute_util::{ExecuteUtil, OutputKind},
+    vulkan_util::VulkanData,
 };
 use std::{ffi::c_int, hint::black_box};
 use vulkano::{command_buffer::PrimaryCommandBufferAbstract, sync::GpuFuture};
@@ -46,6 +48,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 TEXTURE_SIZE_X: 1,
                 TEXTURE_SIZE_Y: 1,
             },
+            OutputKind::Attachment,
         );
 
         b.iter(|| {
@@ -63,7 +66,7 @@ criterion_main!(benches);
 mod attach_discard_sampled_many {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "shaders/instances/attach_discard_sampled_many.glsl",
+        path: "shaders/instances/attach_discard_sampled1D_many.glsl",
         include: ["shaders/pluggable"],
     }
 }

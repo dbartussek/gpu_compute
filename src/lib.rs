@@ -1,3 +1,5 @@
+extern crate core;
+
 pub mod capture;
 pub mod execute_util;
 pub mod vulkan_util;

@@ -8,8 +8,10 @@ use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
-        CommandBufferUsage, CopyBufferToImageInfo, CopyImageToBufferInfo, PrimaryAutoCommandBuffer,
+        CommandBufferUsage, CopyBufferInfo, CopyBufferToImageInfo, CopyImageToBufferInfo,
+        PrimaryAutoCommandBuffer,
     },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceOwned, Queue, QueueCreateInfo, QueueFlags,
@@ -32,6 +34,7 @@ pub struct VulkanData {
     pub queue: Arc<Queue>,
     pub memory_allocator: StandardMemoryAllocator,
     pub command_buffer_allocator: StandardCommandBufferAllocator,
+    pub descriptor_set_allocator: StandardDescriptorSetAllocator,
 
     render_pass_cache: HashMap<RenderPassKey, Arc<RenderPass>>,
     vertex_buffer: Subbuffer<[MVertex]>,
@@ -133,12 +136,15 @@ impl VulkanData {
         )
         .unwrap();
 
+        let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+
         Self {
             physical_device,
             device,
             queue,
             memory_allocator,
             command_buffer_allocator,
+            descriptor_set_allocator,
             render_pass_cache: Default::default(),
             vertex_buffer,
         }
@@ -293,6 +299,48 @@ impl VulkanData {
             command_buffer,
         )
         .unwrap()
+    }
+
+    pub fn create_storage_buffer<T, I>(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        iter: I,
+    ) -> Subbuffer<[T]>
+    where
+        T: BufferContents,
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let staging = Buffer::from_iter(
+            &self.memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::TRANSFER_SRC,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                usage: MemoryUsage::Upload,
+                ..Default::default()
+            },
+            iter,
+        )
+        .unwrap();
+
+        let buffer = Buffer::new_slice(
+            &self.memory_allocator,
+            BufferCreateInfo {
+                usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_DST,
+                ..Default::default()
+            },
+            AllocationCreateInfo::default(),
+            staging.len(),
+        )
+        .unwrap();
+
+        command_buffer
+            .copy_buffer(CopyBufferInfo::buffers(staging, buffer.clone()))
+            .unwrap();
+
+        buffer
     }
 
     pub fn create_1d_data_storage_image<Px, I>(

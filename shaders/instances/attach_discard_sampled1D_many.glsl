@@ -1,5 +1,7 @@
 #version 460
 
+#include "../pluggable/prelude.glsl"
+
 #include "../pluggable/raw_get_data/sampled_1D.glsl"
 #include "../pluggable/get_data/many_calls.glsl"
 #include "../pluggable/discarder/discard.glsl"
