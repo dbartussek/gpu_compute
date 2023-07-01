@@ -32,6 +32,7 @@ pub struct VulkanData {
     pub physical_device: Arc<PhysicalDevice>,
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
+    pub queue_compute: Arc<Queue>,
     pub memory_allocator: StandardMemoryAllocator,
     pub command_buffer_allocator: StandardCommandBufferAllocator,
     pub descriptor_set_allocator: StandardDescriptorSetAllocator,
@@ -65,7 +66,7 @@ impl VulkanData {
         )
         .unwrap();
 
-        let (physical_device, queue_family_index) = instance
+        let (physical_device, queue_family_index, queue_compute) = instance
             .enumerate_physical_devices()
             .unwrap()
             .filter_map(|p| {
@@ -73,8 +74,17 @@ impl VulkanData {
                     .iter()
                     .position(|q| q.queue_flags.intersects(QueueFlags::GRAPHICS))
                     .map(|i| (p, i as u32))
+                    .and_then(|(p, graphics)| {
+                        p.queue_family_properties()
+                            .iter()
+                            .position(|q| {
+                                !q.queue_flags.intersects(QueueFlags::GRAPHICS)
+                                    && q.queue_flags.intersects(QueueFlags::COMPUTE)
+                            })
+                            .map(|compute| (p, graphics, compute as u32))
+                    })
             })
-            .min_by_key(|(p, _)| match p.properties().device_type {
+            .min_by_key(|(p, _, _)| match p.properties().device_type {
                 PhysicalDeviceType::DiscreteGpu => 0,
                 PhysicalDeviceType::IntegratedGpu => 1,
                 PhysicalDeviceType::VirtualGpu => 2,
@@ -88,15 +98,22 @@ impl VulkanData {
             physical_device.clone(),
             DeviceCreateInfo {
                 enabled_extensions: Default::default(),
-                queue_create_infos: vec![QueueCreateInfo {
-                    queue_family_index,
-                    ..Default::default()
-                }],
+                queue_create_infos: vec![
+                    QueueCreateInfo {
+                        queue_family_index,
+                        ..Default::default()
+                    },
+                    QueueCreateInfo {
+                        queue_family_index: queue_compute,
+                        ..Default::default()
+                    },
+                ],
                 ..Default::default()
             },
         )
         .unwrap();
         let queue = queues.next().unwrap();
+        let queue_compute = queues.next().unwrap();
 
         println!(
             "Using device: {} (type: {:?})",
@@ -142,6 +159,7 @@ impl VulkanData {
             physical_device,
             device,
             queue,
+            queue_compute,
             memory_allocator,
             command_buffer_allocator,
             descriptor_set_allocator,

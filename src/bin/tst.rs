@@ -14,10 +14,11 @@ fn main() {
         Vector2::new(256, 2),
         &shader,
         attach_discard_sbuffer_many::SpecializationConstants {
-            TEXTURE_SIZE_X: 256,
-            TEXTURE_SIZE_Y: 1,
+            TEXTURE_SIZE_X: 16,
+            TEXTURE_SIZE_Y: 16,
         },
         OutputKind::Attachment,
+        1,
     );
 
     capture(|| {
@@ -28,7 +29,7 @@ fn main() {
 mod attach_discard_sbuffer_many {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "shaders/instances/attach_discard_sbuffer_loop.glsl",
+        path: "shaders/instances/attach_none_sbuffer_loop.glsl",
         include: ["shaders/pluggable"],
     }
 }

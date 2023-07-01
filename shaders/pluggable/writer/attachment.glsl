@@ -3,8 +3,8 @@
 layout(location = 0) out uvec4 f_color;
 
 void main() {
-    vec2 coord = tex_coord * vec2(TEXTURE_SIZE_X, TEXTURE_SIZE_Y);
+    ivec2 coord = get_coord();
 
-    GetData d = get_data_discarder(int(coord.x), int(coord.y));
+    GetData d = get_data_discarder(coord.x, coord.y);
     f_color = uvec4(d.data, 0, 0, 0);
 }

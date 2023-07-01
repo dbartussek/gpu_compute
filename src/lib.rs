@@ -2,6 +2,7 @@ extern crate core;
 
 pub mod capture;
 pub mod execute_util;
+pub mod execute_util_compute;
 pub mod vulkan_util;
 
 use std::ffi::c_int;

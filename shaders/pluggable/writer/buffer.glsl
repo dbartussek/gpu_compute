@@ -5,8 +5,8 @@ layout(set = 1, binding = 0, std430) writeonly buffer out_buffer {
 };
 
 void main() {
-    vec2 coord = tex_coord * vec2(TEXTURE_SIZE_X, TEXTURE_SIZE_Y);
+    ivec2 coord = get_coord();
 
-    GetData d = get_data_discarder(int(coord.x), int(coord.y));
-    out_values[int(coord.x)] = d.data;
+    GetData d = get_data_discarder(coord.x, coord.y);
+    out_values[int(coord.x) + int(coord.y*TEXTURE_SIZE_X)] = d.data;
 }

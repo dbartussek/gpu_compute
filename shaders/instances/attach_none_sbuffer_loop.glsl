@@ -4,8 +4,8 @@
 
 #include "../pluggable/raw_get_data/storage_buffer.glsl"
 #include "../pluggable/get_data/loop.glsl"
-#include "../pluggable/discarder/discard.glsl"
-#include "../pluggable/writer/buffer.glsl"
+#include "../pluggable/discarder/none.glsl"
+#include "../pluggable/writer/attachment.glsl"
 
 bool condition(int x, int y, int z, uint data) {
     return true;

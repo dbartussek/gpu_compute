@@ -1,5 +1,7 @@
 use crate::vulkan_util::{MVertex, RenderPassKey, VulkanData};
+use itertools::Itertools;
 use nalgebra::Vector2;
+use rand::Rng;
 use std::{hint::black_box, iter::once, num::Wrapping, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -41,11 +43,12 @@ pub struct ExecuteUtil {
     output: OutputKind,
 }
 
-fn generate_data(length: u32) -> impl ExactSizeIterator<Item = u32> {
-    1u32..(length + 1)
+pub(crate) fn generate_data(length: u32) -> impl ExactSizeIterator<Item = u32> {
+    // 1u32..(length + 1)
+    (1u32..(length + 1)).map(|_| rand::thread_rng().gen_range(0..=1))
 }
 
-fn s32<It>(it: It) -> u32
+pub(crate) fn s32<It>(it: It) -> u32
 where
     It: IntoIterator<Item = u32>,
 {
@@ -128,15 +131,22 @@ impl ExecuteUtil {
         fs: &ShaderModule,
         sc: SC,
         output: OutputKind,
+
+        framebuffer_y: u32,
     ) -> Self
     where
         SC: SpecializationConstants,
     {
+        assert_eq!(data_size.x % framebuffer_y, 0);
+
         let mut executor = Self::generic_setup(vulkan, fs, sc, output, |vulkan, pipeline| {
             let total = data_size.x * data_size.y;
 
+            let generated_data = generate_data(total).collect_vec();
+
             let mut command_buffer = vulkan.create_command_buffer();
-            let data = vulkan.create_storage_buffer(&mut command_buffer, generate_data(total));
+            let data =
+                vulkan.create_storage_buffer(&mut command_buffer, generated_data.iter().copied());
 
             command_buffer
                 .build()
@@ -155,7 +165,11 @@ impl ExecuteUtil {
             )
             .unwrap();
 
-            (Vector2::new(data_size.x, 1), set, s32(generate_data(total)))
+            (
+                Vector2::new(data_size.x / framebuffer_y, framebuffer_y),
+                set,
+                s32(generated_data),
+            )
         });
 
         executor.instance_id = data_size.y;
@@ -320,12 +334,15 @@ impl ExecuteUtil {
         )
         .unwrap();
 
-        let framebuffer =
-            Framebuffer::new(self.render_pass.clone(), FramebufferCreateInfo{
+        let framebuffer = Framebuffer::new(
+            self.render_pass.clone(),
+            FramebufferCreateInfo {
                 extent: self.viewport_size.into(),
                 layers: 1,
                 ..Default::default()
-            }).unwrap();
+            },
+        )
+        .unwrap();
 
         command_buffer
             .begin_render_pass(

@@ -10,7 +10,7 @@ uint get_identity();
 uint accumulate(uint acc, uint data);
 
 GetData get_data(int x, int y) {
-    int toZ = int(instance_id);
+    int toZ = get_z();
 
     uint acc = get_identity();
 
