@@ -139,6 +139,7 @@ impl ComputeExecuteUtil {
         )
         .unwrap();
 
+        assert_eq!(self.viewport_size.x % 64, 0);
         command_buffer
             .bind_pipeline_compute(self.pipeline.clone())
             .bind_descriptor_sets(
@@ -154,7 +155,7 @@ impl ComputeExecuteUtil {
                 target_set,
             )
             .push_constants(self.pipeline.layout().clone(), 0, self.instance_id)
-            .dispatch([1, 1, self.instance_id])
+            .dispatch([self.viewport_size.x / 64, 1, 1])
             .unwrap();
 
         command_buffer
