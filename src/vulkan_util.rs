@@ -1,3 +1,4 @@
+use bytemuck::{Pod, Zeroable};
 use nalgebra::Vector2;
 use smallvec::smallvec;
 use std::{
@@ -46,11 +47,11 @@ pub struct RenderPassKey {
     pub format: Option<Format>,
 }
 
-#[derive(BufferContents, Vertex)]
+#[derive(Pod, Zeroable, Copy, Clone, Vertex)]
 #[repr(C)]
 pub struct MVertex {
-    #[format(R32G32_SFLOAT)]
-    pub position: Vector2<f32>,
+    #[format(R8_UINT)]
+    dummy: u8,
 }
 
 impl VulkanData {
@@ -125,20 +126,7 @@ impl VulkanData {
         let command_buffer_allocator =
             StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-        let vertices = [
-            MVertex {
-                position: [-1.0, -1.0].into(),
-            },
-            MVertex {
-                position: [-1.0, 1.0].into(),
-            },
-            MVertex {
-                position: [1.0, -1.0].into(),
-            },
-            MVertex {
-                position: [1.0, 1.0].into(),
-            },
-        ];
+        let vertices = [MVertex { dummy: 0 }; 4];
         let vertex_buffer = Buffer::from_iter(
             &memory_allocator,
             BufferCreateInfo {
