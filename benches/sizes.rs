@@ -14,9 +14,21 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut g = c.benchmark_group("optimal_accumulate_size");
     g.measurement_time(Duration::from_secs(10));
 
-    for data_size in [1u32 << 16, 1<<17, 1<<27, 1<<28, 1<<29] //(16..30).map(|shift| 1u32 << shift)
+    for data_size in [1u32 << 16, 1 << 17, 1 << 27, 1 << 28, 1 << 29]
+    //(16..30).map(|shift| 1u32 << shift)
     {
-        for group_size in [256, 512, 4096, 8192, 16384, 32768, 65536, 8072, 8072*2,8072*4] {
+        for group_size in [
+            256,
+            512,
+            4096,
+            8192,
+            16384,
+            32768,
+            65536,
+            8072,
+            8072 * 2,
+            8072 * 4,
+        ] {
             g.bench_with_input(
                 BenchmarkId::new(format!("group-{}", group_size), data_size),
                 &data_size,
