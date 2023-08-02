@@ -18,6 +18,7 @@ use vulkano::{
         graphics::{
             color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
+            rasterization::{PolygonMode, RasterizationState},
             vertex_input::Vertex,
             viewport::{Viewport, ViewportState},
         },
@@ -96,7 +97,8 @@ impl ExecuteUtil {
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
         let pipeline = GraphicsPipeline::start()
             .vertex_input_state(MVertex::per_vertex())
-            .vertex_shader(vert.entry_point("main").unwrap(), ())
+            .vertex_shader(vert.entry_point("main").unwrap(), vs::SpecializationConstants{DATA_SCALE: 1})
+            .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::FillRectangle))
             .input_assembly_state(
                 InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
             )
@@ -133,6 +135,7 @@ impl ExecuteUtil {
         output: OutputKind,
 
         framebuffer_y: u32,
+        vectorization_factor: u32,
     ) -> Self
     where
         SC: SpecializationConstants,
@@ -166,7 +169,10 @@ impl ExecuteUtil {
             .unwrap();
 
             (
-                Vector2::new(data_size.x / framebuffer_y, framebuffer_y),
+                Vector2::new(
+                    data_size.x / framebuffer_y / vectorization_factor,
+                    framebuffer_y,
+                ),
                 set,
                 s32(generated_data),
             )
@@ -191,9 +197,11 @@ impl ExecuteUtil {
         Self::generic_setup(vulkan, fs, sc, output, |vulkan, pipeline| {
             let mut command_buffer = vulkan.create_command_buffer();
 
+            let raw_data = generate_data(data_size as u32).collect_vec();
+
             let data = vulkan.create_1d_data_sample_image(
                 &mut command_buffer,
-                generate_data(data_size as u32),
+                raw_data.iter().copied(),
                 Format::R32_UINT,
             );
 
@@ -229,11 +237,7 @@ impl ExecuteUtil {
             )
             .unwrap();
 
-            (
-                Vector2::new(data_size as _, 1),
-                set,
-                s32(generate_data(data_size as u32)),
-            )
+            (Vector2::new(data_size as _, 1), set, s32(raw_data))
         })
     }
 
@@ -300,7 +304,7 @@ impl ExecuteUtil {
     }
 
     #[inline(always)]
-    fn run_for_buffer(&mut self, vulkan: &mut VulkanData) {
+    fn run_for_buffer(&mut self, vulkan: &mut VulkanData, separate_read_buffer: bool) {
         let mut command_buffer = vulkan.create_command_buffer();
 
         let target: Subbuffer<[u32]> = Buffer::new_slice(
@@ -309,23 +313,34 @@ impl ExecuteUtil {
                 usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
-            AllocationCreateInfo::default(),
+            AllocationCreateInfo {
+                usage: if separate_read_buffer {
+                    MemoryUsage::DeviceOnly
+                } else {
+                    MemoryUsage::Download
+                },
+                ..Default::default()
+            },
             (self.viewport_size.x * self.viewport_size.y) as DeviceSize,
         )
         .unwrap();
-        let read_buffer = Buffer::new_slice(
-            &vulkan.memory_allocator,
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_DST,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                usage: MemoryUsage::Download,
-                ..Default::default()
-            },
-            target.len(),
-        )
-        .unwrap();
+        let read_buffer = if separate_read_buffer {
+            Buffer::new_slice(
+                &vulkan.memory_allocator,
+                BufferCreateInfo {
+                    usage: BufferUsage::TRANSFER_DST,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    usage: MemoryUsage::Download,
+                    ..Default::default()
+                },
+                target.len(),
+            )
+            .unwrap()
+        } else {
+            target.clone()
+        };
 
         let target_set = PersistentDescriptorSet::new(
             &vulkan.descriptor_set_allocator,
@@ -377,9 +392,11 @@ impl ExecuteUtil {
             .end_render_pass()
             .unwrap();
 
-        command_buffer
-            .copy_buffer(CopyBufferInfo::buffers(target, read_buffer.clone()))
-            .unwrap();
+        if separate_read_buffer {
+            command_buffer
+                .copy_buffer(CopyBufferInfo::buffers(target, read_buffer.clone()))
+                .unwrap();
+        }
 
         let future = command_buffer
             .build()
@@ -396,10 +413,10 @@ impl ExecuteUtil {
     }
 
     #[inline(always)]
-    pub fn run(&mut self, vulkan: &mut VulkanData) {
+    pub fn run(&mut self, vulkan: &mut VulkanData, separate_read_buffer: bool) {
         match self.output {
             OutputKind::Attachment => self.run_for_attachment(vulkan),
-            OutputKind::Buffer => self.run_for_buffer(vulkan),
+            OutputKind::Buffer => self.run_for_buffer(vulkan, separate_read_buffer),
         }
     }
 }

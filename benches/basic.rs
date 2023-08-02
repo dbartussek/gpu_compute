@@ -52,7 +52,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         );
 
         b.iter(|| {
-            execute.run(&mut vulkan);
+            execute.run(&mut vulkan, true);
         });
     });
 

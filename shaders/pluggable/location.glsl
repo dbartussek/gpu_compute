@@ -20,15 +20,14 @@ ivec2 get_coord() {
 
 #else
 
-layout(location = 0) in vec2 tex_coord;
-layout(location = 1) flat in uint instance_id;
+layout(location = 0) flat in uint instance_id;
 
 int get_z() {
     return int(instance_id);
 }
 
 ivec2 get_coord() {
-    return ivec2(tex_coord * vec2(TEXTURE_SIZE_X, TEXTURE_SIZE_Y));
+    return ivec2(gl_FragCoord.xy);
 }
 
 #endif

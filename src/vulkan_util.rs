@@ -15,7 +15,8 @@ use vulkano::{
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceOwned, Queue, QueueCreateInfo, QueueFlags,
+        Device, DeviceCreateInfo, DeviceExtensions, DeviceOwned, Features, Queue, QueueCreateInfo,
+        QueueFlags,
     },
     format::Format,
     image::{
@@ -98,7 +99,14 @@ impl VulkanData {
         let (device, mut queues) = Device::new(
             physical_device.clone(),
             DeviceCreateInfo {
-                enabled_extensions: Default::default(),
+                enabled_extensions: DeviceExtensions {
+                    nv_fill_rectangle: true,
+                    ..Default::default()
+                },
+                enabled_features: Features {
+                    fill_mode_non_solid: true,
+                    ..Default::default()
+                },
                 queue_create_infos: vec![
                     QueueCreateInfo {
                         queue_family_index,

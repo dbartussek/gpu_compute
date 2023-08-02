@@ -46,10 +46,11 @@ fn criterion_benchmark(c: &mut Criterion) {
                         },
                         OutputKind::Buffer,
                         frame_y as _,
+                        1,
                     );
 
                     b.iter(|| {
-                        execute.run(&mut vulkan);
+                        execute.run(&mut vulkan, true);
                     });
                 },
             );

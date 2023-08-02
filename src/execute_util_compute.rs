@@ -68,6 +68,8 @@ impl ComputeExecuteUtil {
         data_size: Vector2<u32>,
         fs: &ShaderModule,
         sc: SC,
+
+        vectorization_factor: u32,
     ) -> Self
     where
         SC: SpecializationConstants,
@@ -96,7 +98,11 @@ impl ComputeExecuteUtil {
             )
             .unwrap();
 
-            (Vector2::new(data_size.x, 1), set, s32(gen_data))
+            (
+                Vector2::new(data_size.x / vectorization_factor, 1),
+                set,
+                s32(gen_data),
+            )
         });
 
         executor.instance_id = data_size.y;
@@ -105,7 +111,7 @@ impl ComputeExecuteUtil {
     }
 
     #[inline(always)]
-    pub fn run(&mut self, vulkan: &mut VulkanData) {
+    pub fn run(&mut self, vulkan: &mut VulkanData, separate_read_buffer: bool) {
         let mut command_buffer = vulkan.create_command_buffer();
 
         let target: Subbuffer<[u32]> = Buffer::new_slice(
@@ -114,23 +120,34 @@ impl ComputeExecuteUtil {
                 usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_SRC,
                 ..Default::default()
             },
-            AllocationCreateInfo::default(),
+            AllocationCreateInfo {
+                usage: if separate_read_buffer {
+                    MemoryUsage::DeviceOnly
+                } else {
+                    MemoryUsage::Download
+                },
+                ..Default::default()
+            },
             (self.viewport_size.x * self.viewport_size.y) as DeviceSize,
         )
         .unwrap();
-        let read_buffer = Buffer::new_slice(
-            &vulkan.memory_allocator,
-            BufferCreateInfo {
-                usage: BufferUsage::TRANSFER_DST,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                usage: MemoryUsage::Download,
-                ..Default::default()
-            },
-            target.len(),
-        )
-        .unwrap();
+        let read_buffer = if separate_read_buffer {
+            Buffer::new_slice(
+                &vulkan.memory_allocator,
+                BufferCreateInfo {
+                    usage: BufferUsage::TRANSFER_DST,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    usage: MemoryUsage::Download,
+                    ..Default::default()
+                },
+                target.len(),
+            )
+            .unwrap()
+        } else {
+            target.clone()
+        };
 
         let target_set = PersistentDescriptorSet::new(
             &vulkan.descriptor_set_allocator,
@@ -158,9 +175,11 @@ impl ComputeExecuteUtil {
             .dispatch([self.viewport_size.x / 64, 1, 1])
             .unwrap();
 
-        command_buffer
-            .copy_buffer(CopyBufferInfo::buffers(target, read_buffer.clone()))
-            .unwrap();
+        if separate_read_buffer {
+            command_buffer
+                .copy_buffer(CopyBufferInfo::buffers(target, read_buffer.clone()))
+                .unwrap();
+        }
 
         let future = command_buffer
             .build()

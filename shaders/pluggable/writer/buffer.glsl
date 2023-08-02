@@ -1,7 +1,7 @@
 #include "../constants.glsl"
 
 layout(set = 1, binding = 0, std430) writeonly buffer out_buffer {
-    uint out_values[];
+    OUTPUT_DATA_TYPE out_values[];
 };
 
 void main() {

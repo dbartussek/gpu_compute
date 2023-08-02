@@ -18,9 +18,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     for y in [1u32]
         .into_iter()
-        // .chain((0..=(50_000 * 4)).step_by(256 * 32))
-        // .chain(((50_000 * 4)..=(50_000 * 64)).step_by(256 * 256 * 4))
-        // .chain(((50_000 * 4)..=(50_000 * 64)).step_by(256 * 256 * 4))
+        .chain((0..=(50_000 * 4)).step_by(256 * 32 * 4))
+        .chain(((50_000 * 4)..=(50_000 * 64)).step_by(256 * 256 * 4))
 
         // .chain(((0)..=(50_000 * 64* 64)).step_by(256 * 256 * 4 * 64))
         .filter(|v| *v != 0)
@@ -41,12 +40,14 @@ fn criterion_benchmark(c: &mut Criterion) {
                 },
                 OutputKind::Attachment,
                 1,
+                1,
             );
 
             b.iter(|| {
-                execute.run(&mut vulkan);
+                execute.run(&mut vulkan, true);
             });
         });
+
         g.bench_with_input(BenchmarkId::new("buffer_to_buffer", y), &y, |b, _| {
             let shader = buffer_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
             let mut execute = ExecuteUtil::setup_storage_buffer(
@@ -59,12 +60,33 @@ fn criterion_benchmark(c: &mut Criterion) {
                 },
                 OutputKind::Buffer,
                 1,
+                1,
             );
 
             b.iter(|| {
-                execute.run(&mut vulkan);
+                execute.run(&mut vulkan, true);
             });
         });
+        g.bench_with_input(BenchmarkId::new("buffer_to_buffer_cpu_visible_memory", y), &y, |b, _| {
+            let shader = buffer_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
+            let mut execute = ExecuteUtil::setup_storage_buffer(
+                &mut vulkan,
+                data_size,
+                &shader,
+                buffer_none_sbuffer_loop::SpecializationConstants {
+                    TEXTURE_SIZE_X: data_size.x as _,
+                    TEXTURE_SIZE_Y: 1,
+                },
+                OutputKind::Buffer,
+                1,
+                1,
+            );
+
+            b.iter(|| {
+                execute.run(&mut vulkan, false);
+            });
+        });
+
         g.bench_with_input(
             BenchmarkId::new("compute_buffer_to_buffer", y),
             &y,
@@ -78,10 +100,32 @@ fn criterion_benchmark(c: &mut Criterion) {
                         TEXTURE_SIZE_X: data_size.x as _,
                         TEXTURE_SIZE_Y: 1,
                     },
+                    1,
                 );
 
                 b.iter(|| {
-                    execute.run(&mut vulkan);
+                    execute.run(&mut vulkan, true);
+                });
+            },
+        );
+        g.bench_with_input(
+            BenchmarkId::new("compute_buffer_to_buffer_cpu_visible_memory", y),
+            &y,
+            |b, _| {
+                let shader = compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
+                let mut execute = ComputeExecuteUtil::setup_storage_buffer(
+                    &mut vulkan,
+                    data_size,
+                    &shader,
+                    compute_none_sbuffer_loop::SpecializationConstants {
+                        TEXTURE_SIZE_X: data_size.x as _,
+                        TEXTURE_SIZE_Y: 1,
+                    },
+                    1,
+                );
+
+                b.iter(|| {
+                    execute.run(&mut vulkan, false);
                 });
             },
         );
