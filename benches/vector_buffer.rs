@@ -5,6 +5,7 @@ use gpu_compute::{
     execute_util::{ExecuteUtil, OutputKind},
     execute_util_compute::ComputeExecuteUtil,
     vulkan_util::VulkanData,
+    GPU_THREAD_COUNT,
 };
 use itertools::Itertools;
 use nalgebra::Vector2;
@@ -27,10 +28,10 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         // .chain(((0)..=(50_000 * 64* 64)).step_by(256 * 256 * 4 * 64))
         .filter(|v| *v != 0)
-        .map(|v| v.div_ceil(256 * 32) * 256 * 32)
+        .map(|v| v.div_ceil(GPU_THREAD_COUNT) * GPU_THREAD_COUNT)
         .unique()
     {
-        let data_size = Vector2::new(256 * 32, y.div_ceil(32 * 256));
+        let data_size = Vector2::new(GPU_THREAD_COUNT, y.div_ceil(GPU_THREAD_COUNT));
 
         g.bench_with_input(
             BenchmarkId::new("vector_buffer_to_buffer", y),

@@ -1,7 +1,8 @@
 use crate::vulkan_util::{MVertex, RenderPassKey, VulkanData};
 use itertools::Itertools;
 use nalgebra::Vector2;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand_pcg::Pcg64Mcg;
 use std::{hint::black_box, iter::once, num::Wrapping, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
@@ -44,12 +45,13 @@ pub struct ExecuteUtil {
     output: OutputKind,
 }
 
-pub(crate) fn generate_data(length: u32) -> impl ExactSizeIterator<Item = u32> {
-    // 1u32..(length + 1)
-    (1u32..(length + 1)).map(|_| rand::thread_rng().gen_range(0..=1))
+pub fn generate_data(length: u32) -> impl ExactSizeIterator<Item = u32> {
+    let mut rng = Pcg64Mcg::seed_from_u64(42);
+
+    (1u32..(length + 1)).map(move |_| rng.gen_range(0..=1))
 }
 
-pub(crate) fn s32<It>(it: It) -> u32
+pub fn s32<It>(it: It) -> u32
 where
     It: IntoIterator<Item = u32>,
 {

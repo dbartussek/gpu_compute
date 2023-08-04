@@ -12,3 +12,5 @@ extern "C" {
     pub fn an_external_function() -> c_int;
     pub fn do_virtual_call(arg: extern "C" fn() -> c_int) -> c_int;
 }
+
+pub const GPU_THREAD_COUNT: u32 = 32 * 256;

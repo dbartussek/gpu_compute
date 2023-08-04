@@ -16,9 +16,14 @@ GetData get_data(int x, int y) {
 
     for (int z = 0; z < toZ; z++) {
         DATA_TYPE data = get_data_raw(x, y, z);
+
+#ifndef UNCONDITIONAL
         if (condition(x, y, z, data)) {
+#endif
             acc = accumulate(acc, data);
+#ifndef UNCONDITIONAL
         }
+#endif
     }
 
     return GetData(acc, false);

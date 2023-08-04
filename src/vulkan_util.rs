@@ -27,10 +27,11 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage, StandardMemoryAllocator},
     pipeline::graphics::vertex_input::Vertex,
     render_pass::RenderPass,
-    single_pass_renderpass, VulkanLibrary,
+    single_pass_renderpass, Version, VulkanLibrary,
 };
 
 pub struct VulkanData {
+    pub instance: Arc<Instance>,
     pub physical_device: Arc<PhysicalDevice>,
     pub device: Arc<Device>,
     pub queue: Arc<Queue>,
@@ -60,9 +61,10 @@ impl VulkanData {
         let library = VulkanLibrary::new().unwrap();
 
         let instance = Instance::new(
-            library,
+            library.clone(),
             InstanceCreateInfo {
-                enumerate_portability: true,
+                max_api_version: Some(Version::V1_2),
+                enabled_extensions: vulkano_win::required_extensions(&library),
                 ..Default::default()
             },
         )
@@ -101,6 +103,7 @@ impl VulkanData {
             DeviceCreateInfo {
                 enabled_extensions: DeviceExtensions {
                     nv_fill_rectangle: true,
+                    khr_swapchain: true,
                     ..Default::default()
                 },
                 enabled_features: Features {
@@ -152,6 +155,7 @@ impl VulkanData {
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
         Self {
+            instance,
             physical_device,
             device,
             queue,
