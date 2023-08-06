@@ -10,12 +10,12 @@ DATA_TYPE get_identity();
 DATA_TYPE accumulate(DATA_TYPE acc, DATA_TYPE data);
 
 GetData get_data(int x, int y) {
-    int toZ = get_z();
+    int to_z = get_z();
 
     DATA_TYPE acc = get_identity();
 
-    for (int z = 0; z < toZ; z++) {
-        DATA_TYPE data = get_data_raw(x, y, z);
+    for (int z = 0; z < to_z; z++) {
+        DATA_TYPE data = get_data_raw(x, y, z, TEXTURE_SIZE_X, TEXTURE_SIZE_Y, to_z);
 
 #ifndef UNCONDITIONAL
         if (condition(x, y, z, data)) {

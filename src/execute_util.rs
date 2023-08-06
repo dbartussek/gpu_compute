@@ -100,7 +100,7 @@ impl ExecuteUtil {
         let pipeline = GraphicsPipeline::start()
             .vertex_input_state(MVertex::per_vertex())
             .vertex_shader(vert.entry_point("main").unwrap(), vs::SpecializationConstants{DATA_SCALE: 1})
-            .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::FillRectangle))
+            // .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::FillRectangle))
             .input_assembly_state(
                 InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
             )
@@ -171,16 +171,18 @@ impl ExecuteUtil {
             .unwrap();
 
             (
-                Vector2::new(
-                    data_size.x / framebuffer_y / vectorization_factor,
-                    framebuffer_y,
-                ),
+                Vector2::new(data_size.x / framebuffer_y, framebuffer_y),
                 set,
                 s32(generated_data),
             )
         });
 
-        executor.instance_id = data_size.y;
+        assert_eq!(
+            data_size.y % vectorization_factor,
+            0,
+            "Dimension Y must be a multiple of the vectorization factor"
+        );
+        executor.instance_id = data_size.y / vectorization_factor;
 
         executor
     }

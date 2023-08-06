@@ -102,7 +102,7 @@ impl VulkanData {
             physical_device.clone(),
             DeviceCreateInfo {
                 enabled_extensions: DeviceExtensions {
-                    nv_fill_rectangle: true,
+                    // nv_fill_rectangle: true,
                     khr_swapchain: true,
                     ..Default::default()
                 },

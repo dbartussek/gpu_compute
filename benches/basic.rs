@@ -2,15 +2,19 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use gpu_compute::{
     an_external_function, do_virtual_call,
     execute_util::{ExecuteUtil, OutputKind},
+    execute_util_compute::ComputeExecuteUtil,
     vulkan_util::VulkanData,
 };
-use std::{ffi::c_int, hint::black_box};
+use nalgebra::Vector2;
+use std::{ffi::c_int, hint::black_box, time::Duration};
 use vulkano::{command_buffer::PrimaryCommandBufferAbstract, sync::GpuFuture};
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut vulkan = VulkanData::init();
 
     let mut g = c.benchmark_group("call_times");
+    g.measurement_time(Duration::from_secs(30));
+    g.sample_size(1000);
 
     g.bench_function("an_external_function", |b| {
         b.iter(|| unsafe { an_external_function() })
@@ -56,6 +60,24 @@ fn criterion_benchmark(c: &mut Criterion) {
         });
     });
 
+    g.bench_function("run_compute_shader", |b| {
+        let shader = compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
+        let mut execute = ComputeExecuteUtil::setup_storage_buffer(
+            &mut vulkan,
+            Vector2::new(64, 1),
+            &shader,
+            attach_discard_sampled_many::SpecializationConstants {
+                TEXTURE_SIZE_X: 1,
+                TEXTURE_SIZE_Y: 1,
+            },
+            1,
+        );
+
+        b.iter(|| {
+            execute.run(&mut vulkan, true);
+        });
+    });
+
     drop(g);
 }
 
@@ -68,5 +90,14 @@ mod attach_discard_sampled_many {
         ty: "fragment",
         path: "shaders/instances/attach_discard_sampled1D_many.glsl",
         include: ["shaders/pluggable"],
+    }
+}
+
+mod compute_none_sbuffer_loop {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "shaders/instances/buffer_none_sbuffer_loop.glsl",
+        include: ["shaders/pluggable"],
+        define: [("COMPUTE_SHADER", "1")],
     }
 }

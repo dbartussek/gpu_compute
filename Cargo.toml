@@ -32,7 +32,7 @@ vulkano-win = "0.33.0"
 winit = "0.28.6"
 
 [dev-dependencies]
-criterion = { version = "0.4", features = ["html_reports"] }
+criterion = { version = "0.5.1", features = ["html_reports"] }
 
 [build-dependencies]
 cc = "1.0"
@@ -47,9 +47,6 @@ harness = false
 
 [[bench]]
 name = "buffer"
-harness = false
-[[bench]]
-name = "vector_buffer"
 harness = false
 
 [[bench]]

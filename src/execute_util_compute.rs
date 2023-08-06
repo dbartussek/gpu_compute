@@ -18,6 +18,8 @@ use vulkano::{
 
 pub struct ComputeExecuteUtil {
     viewport_size: Vector2<u32>,
+    vectorization_factor: u32,
+
     pipeline: Arc<ComputePipeline>,
     set: Arc<PersistentDescriptorSet>,
 
@@ -32,6 +34,7 @@ impl ComputeExecuteUtil {
         vulkan: &mut VulkanData,
         cs: &ShaderModule,
         sc: SC,
+        vectorization_factor: u32,
 
         specialized_init: INIT,
     ) -> Self
@@ -59,6 +62,7 @@ impl ComputeExecuteUtil {
             set,
             instance_id: 1,
             expected_result,
+            vectorization_factor,
         }
     }
 
@@ -74,38 +78,47 @@ impl ComputeExecuteUtil {
     where
         SC: SpecializationConstants,
     {
-        let mut executor = Self::generic_setup(vulkan, fs, sc, |vulkan, pipeline| {
-            let total = data_size.x * data_size.y;
-            let gen_data = generate_data(total).collect_vec();
+        let mut executor =
+            Self::generic_setup(vulkan, fs, sc, vectorization_factor, |vulkan, pipeline| {
+                let total = data_size.x * data_size.y;
+                let gen_data = generate_data(total).collect_vec();
 
-            let mut command_buffer = vulkan.create_command_buffer();
-            let data = vulkan.create_storage_buffer(&mut command_buffer, gen_data.iter().copied());
+                let mut command_buffer = vulkan.create_command_buffer();
+                let data =
+                    vulkan.create_storage_buffer(&mut command_buffer, gen_data.iter().copied());
 
-            command_buffer
-                .build()
-                .unwrap()
-                .execute(vulkan.queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .wait(None)
+                command_buffer
+                    .build()
+                    .unwrap()
+                    .execute(vulkan.queue.clone())
+                    .unwrap()
+                    .then_signal_fence_and_flush()
+                    .unwrap()
+                    .wait(None)
+                    .unwrap();
+
+                let set = PersistentDescriptorSet::new(
+                    &vulkan.descriptor_set_allocator,
+                    pipeline.layout().set_layouts().get(0).unwrap().clone(),
+                    [WriteDescriptorSet::buffer(0, data)],
+                )
                 .unwrap();
 
-            let set = PersistentDescriptorSet::new(
-                &vulkan.descriptor_set_allocator,
-                pipeline.layout().set_layouts().get(0).unwrap().clone(),
-                [WriteDescriptorSet::buffer(0, data)],
-            )
-            .unwrap();
+                (Vector2::new(data_size.x, 1), set, s32(gen_data))
+            });
 
-            (
-                Vector2::new(data_size.x / vectorization_factor, 1),
-                set,
-                s32(gen_data),
-            )
-        });
+        assert_eq!(
+            executor.viewport_size.x % 64,
+            0,
+            "Dimension X must be a multiple of 64 because of workgroup sizes"
+        );
 
-        executor.instance_id = data_size.y;
+        assert_eq!(
+            data_size.y % vectorization_factor,
+            0,
+            "Dimension Y must be a multiple of the vectorization factor"
+        );
+        executor.instance_id = data_size.y / vectorization_factor;
 
         executor
     }
@@ -128,7 +141,7 @@ impl ComputeExecuteUtil {
                 },
                 ..Default::default()
             },
-            (self.viewport_size.x * self.viewport_size.y) as DeviceSize,
+            (self.viewport_size.x * self.viewport_size.y * self.vectorization_factor) as DeviceSize,
         )
         .unwrap();
         let read_buffer = if separate_read_buffer {
@@ -192,6 +205,6 @@ impl ComputeExecuteUtil {
         // dbg!(&read_buffer.read().unwrap() as &[_]);
 
         let result = black_box(s32(read_buffer.read().unwrap().iter().copied()));
-        assert_eq!(result, self.expected_result)
+        assert_eq!(result, self.expected_result);
     }
 }
