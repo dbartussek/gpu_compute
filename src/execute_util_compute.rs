@@ -2,6 +2,7 @@ use crate::{
     execute_util::{generate_data, s32},
     vulkan_util::VulkanData,
 };
+use derivative::Derivative;
 use itertools::Itertools;
 use nalgebra::Vector2;
 use std::{hint::black_box, sync::Arc};
@@ -18,7 +19,7 @@ use vulkano::{
 
 pub struct ComputeExecuteUtil {
     viewport_size: Vector2<u32>,
-    vectorization_factor: u32,
+    parameters: ComputeParameters,
 
     pipeline: Arc<ComputePipeline>,
     set: Arc<PersistentDescriptorSet>,
@@ -28,13 +29,23 @@ pub struct ComputeExecuteUtil {
     expected_result: u32,
 }
 
+#[derive(Derivative)]
+#[derivative(Default, Clone)]
+pub struct ComputeParameters {
+    #[derivative(Default(value = "1"))]
+    pub vectorization_factor: u32,
+
+    pub single_output_value: bool,
+    pub clear_buffer: bool,
+}
+
 impl ComputeExecuteUtil {
     #[inline(always)]
     fn generic_setup<SC, INIT>(
         vulkan: &mut VulkanData,
         cs: &ShaderModule,
         sc: SC,
-        vectorization_factor: u32,
+        parameters: ComputeParameters,
 
         specialized_init: INIT,
     ) -> Self
@@ -62,7 +73,7 @@ impl ComputeExecuteUtil {
             set,
             instance_id: 1,
             expected_result,
-            vectorization_factor,
+            parameters,
         }
     }
 
@@ -73,13 +84,13 @@ impl ComputeExecuteUtil {
         fs: &ShaderModule,
         sc: SC,
 
-        vectorization_factor: u32,
+        parameters: ComputeParameters,
     ) -> Self
     where
         SC: SpecializationConstants,
     {
         let mut executor =
-            Self::generic_setup(vulkan, fs, sc, vectorization_factor, |vulkan, pipeline| {
+            Self::generic_setup(vulkan, fs, sc, parameters.clone(), |vulkan, pipeline| {
                 let total = data_size.x * data_size.y;
                 let gen_data = generate_data(total).collect_vec();
 
@@ -114,11 +125,11 @@ impl ComputeExecuteUtil {
         );
 
         assert_eq!(
-            data_size.y % vectorization_factor,
+            data_size.y % parameters.vectorization_factor,
             0,
             "Dimension Y must be a multiple of the vectorization factor"
         );
-        executor.instance_id = data_size.y / vectorization_factor;
+        executor.instance_id = data_size.y / parameters.vectorization_factor;
 
         executor
     }
@@ -130,7 +141,9 @@ impl ComputeExecuteUtil {
         let target: Subbuffer<[u32]> = Buffer::new_slice(
             &vulkan.memory_allocator,
             BufferCreateInfo {
-                usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_SRC,
+                usage: BufferUsage::STORAGE_BUFFER
+                    | BufferUsage::TRANSFER_SRC
+                    | BufferUsage::TRANSFER_DST,
                 ..Default::default()
             },
             AllocationCreateInfo {
@@ -141,7 +154,12 @@ impl ComputeExecuteUtil {
                 },
                 ..Default::default()
             },
-            (self.viewport_size.x * self.viewport_size.y * self.vectorization_factor) as DeviceSize,
+            if !self.parameters.single_output_value {
+                (self.viewport_size.x * self.viewport_size.y * self.parameters.vectorization_factor)
+                    as DeviceSize
+            } else {
+                self.parameters.vectorization_factor as DeviceSize
+            },
         )
         .unwrap();
         let read_buffer = if separate_read_buffer {
@@ -161,6 +179,10 @@ impl ComputeExecuteUtil {
         } else {
             target.clone()
         };
+
+        if self.parameters.clear_buffer {
+            command_buffer.fill_buffer(target.clone(), 0).unwrap();
+        }
 
         let target_set = PersistentDescriptorSet::new(
             &vulkan.descriptor_set_allocator,
@@ -202,7 +224,7 @@ impl ComputeExecuteUtil {
         let fence = future.then_signal_fence_and_flush().unwrap();
         fence.wait(None).unwrap();
 
-        // dbg!(&read_buffer.read().unwrap() as &[_]);
+        // println!("\n\n\n{:x?}\n", &read_buffer.read().unwrap() as &[_]);
 
         let result = black_box(s32(read_buffer.read().unwrap().iter().copied()));
         assert_eq!(result, self.expected_result);

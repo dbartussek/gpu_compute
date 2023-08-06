@@ -1,6 +1,9 @@
 #![feature(int_roundings)]
 
-use gpu_compute::{execute_util_compute::ComputeExecuteUtil, vulkan_util::VulkanData};
+use gpu_compute::{
+    execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
+    vulkan_util::VulkanData,
+};
 use nalgebra::Vector2;
 use std::{io::stdin, sync::Arc, time::Duration};
 use vulkano::{
@@ -51,7 +54,10 @@ fn main() {
             TEXTURE_SIZE_X: data_size.x as _,
             TEXTURE_SIZE_Y: 1,
         },
-        4,
+        ComputeParameters {
+            vectorization_factor: 4,
+            ..ComputeParameters::default()
+        },
     );
 
     event_loop.run(move |e, _, control| match e {

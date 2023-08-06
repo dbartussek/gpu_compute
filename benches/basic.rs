@@ -2,7 +2,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use gpu_compute::{
     an_external_function, do_virtual_call,
     execute_util::{ExecuteUtil, OutputKind},
-    execute_util_compute::ComputeExecuteUtil,
+    execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
@@ -70,7 +70,9 @@ fn criterion_benchmark(c: &mut Criterion) {
                 TEXTURE_SIZE_X: 1,
                 TEXTURE_SIZE_Y: 1,
             },
-            1,
+            ComputeParameters {
+                ..ComputeParameters::default()
+            },
         );
 
         b.iter(|| {

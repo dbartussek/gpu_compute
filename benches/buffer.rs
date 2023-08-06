@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use gpu_compute::{
     execute_util::{ExecuteUtil, OutputKind},
-    execute_util_compute::ComputeExecuteUtil,
+    execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
     vulkan_util::VulkanData,
     GPU_THREAD_COUNT, PROFILING_SIZES,
 };
@@ -12,7 +12,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut vulkan = VulkanData::init();
 
     let mut g = c.benchmark_group("gpu_sum");
-    g.measurement_time(Duration::from_secs(30 * 2));
+    g.measurement_time(Duration::from_secs(30));
 
 
     println!("{:X?}", *PROFILING_SIZES);
@@ -95,7 +95,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                         TEXTURE_SIZE_X: data_size.x as _,
                         TEXTURE_SIZE_Y: 1,
                     },
-                    1,
+                    ComputeParameters::default(),
                 );
 
                 b.iter(|| {
@@ -116,7 +116,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                         TEXTURE_SIZE_X: data_size.x as _,
                         TEXTURE_SIZE_Y: 1,
                     },
-                    1,
+                    ComputeParameters::default(),
                 );
 
                 b.iter(|| {
@@ -167,7 +167,10 @@ fn criterion_benchmark(c: &mut Criterion) {
                             TEXTURE_SIZE_X: data_size.x as _,
                             TEXTURE_SIZE_Y: 1,
                         },
-                        4,
+                        ComputeParameters {
+                            vectorization_factor: 4,
+                            ..ComputeParameters::default()
+                        },
                     );
 
                     b.iter(|| {
@@ -189,7 +192,10 @@ fn criterion_benchmark(c: &mut Criterion) {
                             TEXTURE_SIZE_X: data_size.x as _,
                             TEXTURE_SIZE_Y: 1,
                         },
-                        4,
+                        ComputeParameters {
+                            vectorization_factor: 4,
+                            ..ComputeParameters::default()
+                        },
                     );
 
                     b.iter(|| {
@@ -198,6 +204,38 @@ fn criterion_benchmark(c: &mut Criterion) {
                 },
             );
         }
+    }
+
+    {
+        // This has AWFUL performance
+        let y = PROFILING_SIZES.first().copied().unwrap();
+        let data_size = Vector2::new(GPU_THREAD_COUNT, y / GPU_THREAD_COUNT);
+
+        g.bench_with_input(
+            BenchmarkId::new("compute_buffer_to_buffer_atomic_cpu_visible_memory", y),
+            &y,
+            |b, _| {
+                let shader = compute_none_abuffer_loop::load(vulkan.device.clone()).unwrap();
+                let mut execute = ComputeExecuteUtil::setup_storage_buffer(
+                    &mut vulkan,
+                    data_size,
+                    &shader,
+                    compute_none_abuffer_loop::SpecializationConstants {
+                        TEXTURE_SIZE_X: data_size.x as _,
+                        TEXTURE_SIZE_Y: 1,
+                    },
+                    ComputeParameters {
+                        single_output_value: true,
+                        clear_buffer: true,
+                        ..ComputeParameters::default()
+                    },
+                );
+
+                b.iter(|| {
+                    execute.run(&mut vulkan, false);
+                });
+            },
+        );
     }
 
     drop(g);
@@ -226,6 +264,14 @@ mod compute_none_sbuffer_loop {
     vulkano_shaders::shader! {
         ty: "compute",
         path: "shaders/instances/buffer_none_sbuffer_loop.glsl",
+        include: ["shaders/pluggable"],
+        define: [("COMPUTE_SHADER", "1")],
+    }
+}
+mod compute_none_abuffer_loop {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "shaders/instances/buffer_none_abuffer_loop.glsl",
         include: ["shaders/pluggable"],
         define: [("COMPUTE_SHADER", "1")],
     }
