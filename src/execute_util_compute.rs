@@ -1,13 +1,12 @@
-use crate::{
-    execute_util::{generate_data, s32},
-    vulkan_util::VulkanData,
-};
+use crate::{execute_util::generate_data, vulkan_util::VulkanData};
+use bytemuck::Pod;
 use derivative::Derivative;
 use itertools::Itertools;
 use nalgebra::Vector2;
-use std::{hint::black_box, sync::Arc};
+use num::{NumCast, Zero};
+use std::{fmt::Debug, hint::black_box, iter::Sum, marker::PhantomData, sync::Arc};
 use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{CopyBufferInfo, PrimaryCommandBufferAbstract},
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     memory::allocator::{AllocationCreateInfo, MemoryUsage},
@@ -17,7 +16,7 @@ use vulkano::{
     DeviceSize,
 };
 
-pub struct ComputeExecuteUtil {
+pub struct ComputeExecuteUtil<Type> {
     viewport_size: Vector2<u32>,
     parameters: ComputeParameters,
 
@@ -26,7 +25,11 @@ pub struct ComputeExecuteUtil {
 
     instance_id: u32,
 
-    expected_result: u32,
+    expected_result: Type,
+
+    accumulate: Box<dyn Fn(Type, Type) -> Type>,
+
+    t: PhantomData<Type>,
 }
 
 #[derive(Derivative)]
@@ -39,22 +42,27 @@ pub struct ComputeParameters {
     pub clear_buffer: bool,
 }
 
-impl ComputeExecuteUtil {
+impl<Type> ComputeExecuteUtil<Type>
+where
+    Type: Copy + NumCast + Pod + BufferContents + PartialEq + Zero + Debug + Sum,
+{
     #[inline(always)]
-    fn generic_setup<SC, INIT>(
+    fn generic_setup<SC, Acc, INIT>(
         vulkan: &mut VulkanData,
         cs: &ShaderModule,
         sc: SC,
         parameters: ComputeParameters,
 
+        accumulate: Acc,
         specialized_init: INIT,
     ) -> Self
     where
         SC: SpecializationConstants,
+        Acc: 'static + Fn(Type, Type) -> Type,
         INIT: FnOnce(
             &mut VulkanData,
             &Arc<ComputePipeline>,
-        ) -> (Vector2<u32>, Arc<PersistentDescriptorSet>, u32),
+        ) -> (Vector2<u32>, Arc<PersistentDescriptorSet>, Type),
     {
         let pipeline = ComputePipeline::new(
             vulkan.device.clone(),
@@ -74,28 +82,40 @@ impl ComputeExecuteUtil {
             instance_id: 1,
             expected_result,
             parameters,
+
+            accumulate: Box::new(accumulate),
+            t: Default::default(),
         }
     }
 
     #[inline(always)]
-    pub fn setup_storage_buffer<SC>(
+    pub fn setup_storage_buffer<SC, Acc>(
         vulkan: &mut VulkanData,
         data_size: Vector2<u32>,
         fs: &ShaderModule,
         sc: SC,
 
         parameters: ComputeParameters,
+
+        accumulate: Acc,
     ) -> Self
     where
         SC: SpecializationConstants,
+        Acc: 'static + Fn(Type, Type) -> Type,
     {
-        let mut executor =
-            Self::generic_setup(vulkan, fs, sc, parameters.clone(), |vulkan, pipeline| {
-                let total = data_size.x * data_size.y;
-                let gen_data = generate_data(total).collect_vec();
+        let total = data_size.x * data_size.y;
+        let gen_data = generate_data(total).collect_vec();
+        let expected = gen_data.iter().copied().reduce(&accumulate).unwrap();
 
+        let mut executor = Self::generic_setup(
+            vulkan,
+            fs,
+            sc,
+            parameters.clone(),
+            accumulate,
+            move |vulkan, pipeline| {
                 let mut command_buffer = vulkan.create_command_buffer();
-                let data =
+                let data: Subbuffer<[Type]> =
                     vulkan.create_storage_buffer(&mut command_buffer, gen_data.iter().copied());
 
                 command_buffer
@@ -115,8 +135,9 @@ impl ComputeExecuteUtil {
                 )
                 .unwrap();
 
-                (Vector2::new(data_size.x, 1), set, s32(gen_data))
-            });
+                (Vector2::new(data_size.x, 1), set, expected)
+            },
+        );
 
         assert_eq!(
             executor.viewport_size.x % 64,
@@ -138,7 +159,7 @@ impl ComputeExecuteUtil {
     pub fn run(&mut self, vulkan: &mut VulkanData, separate_read_buffer: bool) {
         let mut command_buffer = vulkan.create_command_buffer();
 
-        let target: Subbuffer<[u32]> = Buffer::new_slice(
+        let target: Subbuffer<[Type]> = Buffer::new_slice(
             &vulkan.memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER
@@ -181,7 +202,9 @@ impl ComputeExecuteUtil {
         };
 
         if self.parameters.clear_buffer {
-            command_buffer.fill_buffer(target.clone(), 0).unwrap();
+            command_buffer
+                .fill_buffer(target.clone().into_bytes().cast_aligned(), 0)
+                .unwrap();
         }
 
         let target_set = PersistentDescriptorSet::new(
@@ -226,7 +249,15 @@ impl ComputeExecuteUtil {
 
         // println!("\n\n\n{:x?}\n", &read_buffer.read().unwrap() as &[_]);
 
-        let result = black_box(s32(read_buffer.read().unwrap().iter().copied()));
+        let result = black_box(
+            read_buffer
+                .read()
+                .unwrap()
+                .iter()
+                .copied()
+                .reduce(&self.accumulate)
+                .unwrap(),
+        );
         assert_eq!(result, self.expected_result);
     }
 }

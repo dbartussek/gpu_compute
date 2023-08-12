@@ -1,24 +1,30 @@
 #![feature(int_roundings)]
 
+use bytemuck::Pod;
 use criterion::{
-    criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion,
+    black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId,
+    Criterion,
 };
-use gpu_compute::{
-    execute_util::{generate_data, s32},
-    GPU_THREAD_COUNT, PROFILING_SIZES,
-};
+use gpu_compute::{execute_util::generate_data, GPU_THREAD_COUNT, PROFILING_SIZES};
 use itertools::Itertools;
-use ocl::{r#async::BufferSink, Buffer, MemFlags, ProQue, WriteGuard};
+use num::{NumCast, Zero};
+use ocl::{r#async::BufferSink, Buffer, MemFlags, OclPrm, ProQue, WriteGuard};
 use ocl_futures::future::Future;
-use std::time::Duration;
+use std::{fmt::Debug, time::Duration};
+use vulkano::buffer::BufferContents;
 
-pub fn do_cl_bench(
+pub fn do_cl_bench<Type, Acc>(
     g: &mut BenchmarkGroup<WallTime>,
     data_size: u32,
     kernel_size: u32,
     src: &str,
     name: &str,
-) {
+
+    accumulate: Acc,
+) where
+    Type: Copy + NumCast + Pod + BufferContents + PartialEq + Debug + OclPrm + Zero,
+    Acc: Fn(Type, Type) -> Type,
+{
     g.bench_with_input(BenchmarkId::new(name, data_size), &data_size, |b, _| {
         let cl_program = ProQue::builder()
             .src(src)
@@ -26,7 +32,7 @@ pub fn do_cl_bench(
             .build()
             .unwrap();
 
-        let source_buffer = Buffer::<u32>::builder()
+        let source_buffer = Buffer::<Type>::builder()
             .queue(cl_program.queue().clone())
             .flags(
                 MemFlags::empty()
@@ -52,12 +58,12 @@ pub fn do_cl_bench(
             let mut writer = writer.wait().unwrap();
             writer.copy_from_slice(&generate_data(data_size).collect_vec());
 
-            let source_sink: BufferSink<u32> = WriteGuard::release(writer).into();
+            let source_sink: BufferSink<Type> = WriteGuard::release(writer).into();
             source_sink.flush().enq().unwrap().wait().unwrap();
         }
 
         let output_buffer = cl_program
-            .buffer_builder::<u32>()
+            .buffer_builder::<Type>()
             .flags(MemFlags::empty().host_read_only().write_only())
             .build()
             .unwrap();
@@ -71,57 +77,83 @@ pub fn do_cl_bench(
             .build()
             .unwrap();
 
-        let expected = s32(generate_data(data_size));
-        let mut result = vec![0u32; kernel_size as _];
+        let expected: Type = generate_data(data_size).reduce(&accumulate).unwrap();
+        let mut result = vec![Type::zero(); kernel_size as _];
 
         b.iter(|| {
             unsafe { kernel.enq() }.unwrap();
             output_buffer.read(&mut result).enq().unwrap();
-            let result_sum: u32 = result.iter().copied().sum();
+            let result_sum = black_box(result.iter().copied().reduce(&accumulate)).unwrap();
             assert_eq!(result_sum, expected);
         });
     });
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
+    let sizes = PROFILING_SIZES.clone();
+    println!("{:X?}", sizes);
+
     {
         let mut g = c.benchmark_group("call_times");
         g.measurement_time(Duration::from_secs(30));
         g.sample_size(1000);
 
-        do_cl_bench(
+        do_cl_bench::<u32, _>(
             &mut g,
             1,
             1,
             include_str!("../shaders/opencl/sum_column_major.cl"),
             "opencl",
+            |a, b| a + b,
         );
     }
 
-    let mut g = c.benchmark_group("gpu_sum");
-    g.measurement_time(Duration::from_secs(30));
+    {
+        let mut g = c.benchmark_group("gpu_sum");
+        g.measurement_time(Duration::from_secs(30));
 
-    let sizes = PROFILING_SIZES.clone();
-
-    println!("{:X?}", sizes);
-    for data_size in sizes {
-        do_cl_bench(
-            &mut g,
-            data_size,
-            GPU_THREAD_COUNT,
-            include_str!("../shaders/opencl/sum_column_major.cl"),
-            "opencl_column_major",
-        );
-        do_cl_bench(
-            &mut g,
-            data_size,
-            GPU_THREAD_COUNT,
-            include_str!("../shaders/opencl/sum_row_major.cl"),
-            "opencl_row_major",
-        );
+        for data_size in sizes.clone() {
+            do_cl_bench::<u32, _>(
+                &mut g,
+                data_size,
+                GPU_THREAD_COUNT,
+                include_str!("../shaders/opencl/sum_column_major.cl"),
+                "opencl_column_major",
+                |a, b| a + b,
+            );
+            do_cl_bench::<u32, _>(
+                &mut g,
+                data_size,
+                GPU_THREAD_COUNT,
+                include_str!("../shaders/opencl/sum_row_major.cl"),
+                "opencl_row_major",
+                |a, b| a + b,
+            );
+        }
     }
+    {
+        let mut g = c.benchmark_group("gpu_min_f32");
+        g.measurement_time(Duration::from_secs(30));
 
-    drop(g);
+        for data_size in sizes.clone() {
+            do_cl_bench::<f32, _>(
+                &mut g,
+                data_size,
+                GPU_THREAD_COUNT,
+                include_str!("../shaders/opencl/min_column_major_f32.cl"),
+                "opencl_column_major",
+                |a, b| a.min(b),
+            );
+            do_cl_bench::<f32, _>(
+                &mut g,
+                data_size,
+                GPU_THREAD_COUNT,
+                include_str!("../shaders/opencl/min_row_major_f32.cl"),
+                "opencl_row_major",
+                |a, b| a.min(b),
+            );
+        }
+    }
 }
 
 criterion_group!(benches, criterion_benchmark);

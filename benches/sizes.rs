@@ -47,6 +47,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                         OutputKind::Buffer,
                         frame_y as _,
                         1,
+                        |a, b| a + b,
                     );
 
                     b.iter(|| {
@@ -66,7 +67,7 @@ criterion_main!(benches);
 mod buffer_none_sbuffer_loop {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "shaders/instances/buffer_none_sbuffer_loop.glsl",
+        path: "shaders/instances/gpu_sum/buffer_none_sbuffer_loop.glsl",
         include: ["shaders/pluggable"],
     }
 }

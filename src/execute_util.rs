@@ -1,9 +1,10 @@
 use crate::vulkan_util::{MVertex, RenderPassKey, VulkanData};
 use itertools::Itertools;
 use nalgebra::Vector2;
+use num::NumCast;
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
-use std::{hint::black_box, iter::once, num::Wrapping, sync::Arc};
+use std::{fmt::Debug, hint::black_box, iter::once, sync::Arc};
 use vulkano::{
     buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -43,19 +44,19 @@ pub struct ExecuteUtil {
     expected_result: u32,
 
     output: OutputKind,
+
+    accumulate: Box<dyn Fn(u32, u32) -> u32>,
 }
 
-pub fn generate_data(length: u32) -> impl ExactSizeIterator<Item = u32> {
+pub fn generate_data<Type>(length: u32) -> impl ExactSizeIterator<Item = Type>
+where
+    Type: NumCast,
+{
     let mut rng = Pcg64Mcg::seed_from_u64(42);
 
-    (1u32..(length + 1)).map(move |_| rng.gen_range(0..=1))
-}
-
-pub fn s32<It>(it: It) -> u32
-where
-    It: IntoIterator<Item = u32>,
-{
-    it.into_iter().map(|s| Wrapping(s)).sum::<Wrapping<u32>>().0
+    (1u32..(length + 1))
+        .map(move |_| rng.gen_range(0..10))
+        .map(|n| Type::from(n).unwrap())
 }
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
@@ -77,16 +78,18 @@ impl OutputKind {
 
 impl ExecuteUtil {
     #[inline(always)]
-    fn generic_setup<SC, INIT>(
+    fn generic_setup<SC, INIT, Acc>(
         vulkan: &mut VulkanData,
         fs: &ShaderModule,
         sc: SC,
         output: OutputKind,
+        accumulate: Acc,
 
         specialized_init: INIT,
     ) -> Self
     where
         SC: SpecializationConstants,
+        Acc: 'static + Fn(u32, u32) -> u32,
         INIT: FnOnce(
             &mut VulkanData,
             &Arc<GraphicsPipeline>,
@@ -125,11 +128,12 @@ impl ExecuteUtil {
             instance_id: 1,
             expected_result,
             output,
+            accumulate: Box::new(accumulate),
         }
     }
 
     #[inline(always)]
-    pub fn setup_storage_buffer<SC>(
+    pub fn setup_storage_buffer<SC, Acc>(
         vulkan: &mut VulkanData,
         data_size: Vector2<u32>,
         fs: &ShaderModule,
@@ -138,44 +142,54 @@ impl ExecuteUtil {
 
         framebuffer_y: u32,
         vectorization_factor: u32,
+
+        accumulate: Acc,
     ) -> Self
     where
         SC: SpecializationConstants,
+        Acc: 'static + Fn(u32, u32) -> u32,
     {
         assert_eq!(data_size.x % framebuffer_y, 0);
 
-        let mut executor = Self::generic_setup(vulkan, fs, sc, output, |vulkan, pipeline| {
-            let total = data_size.x * data_size.y;
+        let total = data_size.x * data_size.y;
+        let generated_data = generate_data(total).collect_vec();
+        let expected = generated_data.iter().copied().reduce(&accumulate).unwrap();
 
-            let generated_data = generate_data(total).collect_vec();
+        let mut executor = Self::generic_setup(
+            vulkan,
+            fs,
+            sc,
+            output,
+            accumulate,
+            move |vulkan, pipeline| {
+                let mut command_buffer = vulkan.create_command_buffer();
+                let data = vulkan
+                    .create_storage_buffer(&mut command_buffer, generated_data.iter().copied());
 
-            let mut command_buffer = vulkan.create_command_buffer();
-            let data =
-                vulkan.create_storage_buffer(&mut command_buffer, generated_data.iter().copied());
+                command_buffer
+                    .build()
+                    .unwrap()
+                    .execute(vulkan.queue.clone())
+                    .unwrap()
+                    .then_signal_fence_and_flush()
+                    .unwrap()
+                    .wait(None)
+                    .unwrap();
 
-            command_buffer
-                .build()
-                .unwrap()
-                .execute(vulkan.queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .wait(None)
+                let set = PersistentDescriptorSet::new(
+                    &vulkan.descriptor_set_allocator,
+                    pipeline.layout().set_layouts().get(0).unwrap().clone(),
+                    [WriteDescriptorSet::buffer(0, data)],
+                )
                 .unwrap();
 
-            let set = PersistentDescriptorSet::new(
-                &vulkan.descriptor_set_allocator,
-                pipeline.layout().set_layouts().get(0).unwrap().clone(),
-                [WriteDescriptorSet::buffer(0, data)],
-            )
-            .unwrap();
-
-            (
-                Vector2::new(data_size.x / framebuffer_y, framebuffer_y),
-                set,
-                s32(generated_data),
-            )
-        });
+                (
+                    Vector2::new(data_size.x / framebuffer_y, framebuffer_y),
+                    set,
+                    expected,
+                )
+            },
+        );
 
         assert_eq!(
             data_size.y % vectorization_factor,
@@ -188,20 +202,25 @@ impl ExecuteUtil {
     }
 
     #[inline(always)]
-    pub fn setup_1d_sampler<SC>(
+    pub fn setup_1d_sampler<SC, Acc>(
         vulkan: &mut VulkanData,
         data_size: usize,
         fs: &ShaderModule,
         sc: SC,
         output: OutputKind,
+
+        accumulate: Acc,
     ) -> Self
     where
         SC: SpecializationConstants,
+        Acc: 'static + Fn(u32, u32) -> u32,
     {
-        Self::generic_setup(vulkan, fs, sc, output, |vulkan, pipeline| {
+        let raw_data = generate_data(data_size as u32).collect_vec();
+        let expected = raw_data.iter().copied().reduce(&accumulate).unwrap();
+
+        Self::generic_setup(vulkan, fs, sc, output, accumulate, |vulkan, pipeline| {
             let mut command_buffer = vulkan.create_command_buffer();
 
-            let raw_data = generate_data(data_size as u32).collect_vec();
 
             let data = vulkan.create_1d_data_sample_image(
                 &mut command_buffer,
@@ -241,7 +260,7 @@ impl ExecuteUtil {
             )
             .unwrap();
 
-            (Vector2::new(data_size as _, 1), set, s32(raw_data))
+            (Vector2::new(data_size as _, 1), set, expected)
         })
     }
 
@@ -303,8 +322,16 @@ impl ExecuteUtil {
 
         // dbg!(&read_buffer.read().unwrap() as &[_]);
 
-        let result = black_box(s32(read_buffer.read().unwrap().iter().copied()));
-        assert_eq!(result, self.expected_result)
+        let result = black_box(
+            read_buffer
+                .read()
+                .unwrap()
+                .iter()
+                .copied()
+                .reduce(&self.accumulate)
+                .unwrap(),
+        );
+        assert_eq!(result, self.expected_result);
     }
 
     #[inline(always)]
@@ -412,8 +439,16 @@ impl ExecuteUtil {
 
         // dbg!(&read_buffer.read().unwrap() as &[_]);
 
-        let result = black_box(s32(read_buffer.read().unwrap().iter().copied()));
-        assert_eq!(result, self.expected_result)
+        let result = black_box(
+            read_buffer
+                .read()
+                .unwrap()
+                .iter()
+                .copied()
+                .reduce(&self.accumulate)
+                .unwrap(),
+        );
+        assert_eq!(result, self.expected_result);
     }
 
     #[inline(always)]

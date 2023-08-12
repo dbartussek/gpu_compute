@@ -16,6 +16,7 @@ derivative = "2.2.0"
 itertools = "0.10.5"
 lazy_static = "1.4.0"
 nalgebra = { version = "0.32.2", features = ["bytemuck"] }
+num = "0.4.1"
 ocl = "0.19.4"
 ocl_futures = { version = "0.1.31", package = "futures" }
 rand = "0.8.5"
@@ -47,6 +48,9 @@ harness = false
 
 [[bench]]
 name = "buffer"
+harness = false
+[[bench]]
+name = "buffer_f32"
 harness = false
 
 [[bench]]

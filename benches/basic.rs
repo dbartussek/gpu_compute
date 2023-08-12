@@ -53,6 +53,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 TEXTURE_SIZE_Y: 1,
             },
             OutputKind::Attachment,
+            |a, b| a + b,
         );
 
         b.iter(|| {
@@ -62,7 +63,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     g.bench_function("run_compute_shader", |b| {
         let shader = compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-        let mut execute = ComputeExecuteUtil::setup_storage_buffer(
+        let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
             &mut vulkan,
             Vector2::new(64, 1),
             &shader,
@@ -73,6 +74,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             ComputeParameters {
                 ..ComputeParameters::default()
             },
+            |a, b| a + b,
         );
 
         b.iter(|| {
@@ -90,7 +92,7 @@ criterion_main!(benches);
 mod attach_discard_sampled_many {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "shaders/instances/attach_discard_sampled1D_many.glsl",
+        path: "shaders/instances/gpu_sum/attach_discard_sampled1D_many.glsl",
         include: ["shaders/pluggable"],
     }
 }
@@ -98,7 +100,7 @@ mod attach_discard_sampled_many {
 mod compute_none_sbuffer_loop {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "shaders/instances/buffer_none_sbuffer_loop.glsl",
+        path: "shaders/instances/gpu_sum/buffer_none_sbuffer_loop.glsl",
         include: ["shaders/pluggable"],
         define: [("COMPUTE_SHADER", "1")],
     }

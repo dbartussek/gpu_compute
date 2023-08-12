@@ -46,7 +46,7 @@ fn main() {
     let data_size = Vector2::<u32>::new(32768, 4);
 
     let shader = compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-    let mut execute = ComputeExecuteUtil::setup_storage_buffer(
+    let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
         &mut vulkan,
         data_size,
         &shader,
@@ -58,6 +58,7 @@ fn main() {
             vectorization_factor: 4,
             ..ComputeParameters::default()
         },
+        |a, b| a + b,
     );
 
     event_loop.run(move |e, _, control| match e {
@@ -99,7 +100,7 @@ fn main() {
 mod compute_none_sbuffer_loop {
     vulkano_shaders::shader! {
         ty: "compute",
-        path: "shaders/instances/vectorized/buffer_none_sbuffer_loop.glsl",
+        path: "shaders/instances/gpu_sum/vectorized/buffer_none_sbuffer_loop.glsl",
         include: ["shaders/pluggable"],
         define: [("COMPUTE_SHADER", "1")],
     }
