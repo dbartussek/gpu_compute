@@ -7,6 +7,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     iter::once,
 };
+use bytemuck::cast_slice;
 use vulkano::{
     buffer::Subbuffer,
     command_buffer::{PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents},
@@ -29,7 +30,7 @@ use gpu_compute::execute_util::QuadMethod;
 
 
 fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
-    const FORMAT: Format = Format::R8G8_UINT;
+    const FORMAT: Format = Format::R16G16_UINT;
 
     let render_pass = vulkan.create_render_pass(RenderPassKey {
         format: Some(FORMAT),
@@ -103,7 +104,7 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
         .end_render_pass()
         .unwrap();
 
-    let read_buffer: Subbuffer<[[u8; 2]]> =
+    let read_buffer: Subbuffer<[[u16; 2]]> =
         vulkan.download_image(&mut command_buffer, target.clone());
 
     let future = command_buffer
@@ -124,13 +125,13 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
         *group_counts.entry(s).or_insert(0usize) += 1;
     }
 
-    // let rg: Vec<u8> = raw_samples.iter().map(|v| [v[0], v[1],
+    // let rg: Vec<u8> = raw_samples.iter().map(|v| [v[0] as u8, v[1] as u8,
     // 0]).flatten().collect_vec(); let rg = RgbImage::from_vec(size.x, size.y,
     // rg).unwrap();
 
     let hashed: Vec<u8> = raw_samples
         .iter()
-        .map(|v| Sha3_256::digest(v).into_iter().take(3))
+        .map(|v| Sha3_256::digest(cast_slice(v)).into_iter().take(3))
         .flatten()
         .collect_vec();
     let hashed = RgbImage::from_vec(size.x, size.y, hashed).unwrap();
@@ -151,8 +152,8 @@ fn main() {
     let _ = std::fs::remove_dir_all("subgroups");
     let _ = std::fs::create_dir_all("subgroups");
 
-    for x in [1, 2, 32, 64, 128, 256] {
-        for y in [1, 2, 32, 64, 128, 256] {
+    for x in [1, 2, 8, 16, 32, 64, 128, 256] {
+        for y in [1, 2, 8, 16, 32, 64, 128, 256] {
             for method in QuadMethod::all(&vulkan) {
                 run(&mut vulkan, Vector2::new(x, y), *method);
             }
