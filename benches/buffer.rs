@@ -38,7 +38,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             &shader,
                             attach_discard_sbuffer_loop::SpecializationConstants {
                                 TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
-                                TEXTURE_SIZE_Y: data_size.y as _,
+                                TEXTURE_SIZE_Y: 1,
                             },
                             OutputKind::Attachment,
                             method,
@@ -89,7 +89,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             &shader,
                             buffer_none_sbuffer_loop::SpecializationConstants {
                                 TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
-                                TEXTURE_SIZE_Y: data_size.y as _,
+                                TEXTURE_SIZE_Y: 1,
                             },
                             OutputKind::Buffer,
                             method,
@@ -114,7 +114,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             &shader,
                             buffer_none_sbuffer_loop::SpecializationConstants {
                                 TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
-                                TEXTURE_SIZE_Y: data_size.y as _,
+                                TEXTURE_SIZE_Y: 1,
                             },
                             OutputKind::Buffer,
                             method,
@@ -143,7 +143,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                                 &shader,
                                 vector_buffer_none_sbuffer_loop::SpecializationConstants {
                                     TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
-                                    TEXTURE_SIZE_Y: data_size.y as _,
+                                    TEXTURE_SIZE_Y: 1,
                                 },
                                 OutputKind::Buffer,
                                 method,
