@@ -1,4 +1,8 @@
-use gpu_compute::vulkan_util::{MVertex, RenderPassKey, VulkanData};
+use bytemuck::cast_slice;
+use gpu_compute::{
+    execute_util::QuadMethod,
+    vulkan_util::{MVertex, RenderPassKey, VulkanData},
+};
 use image::RgbImage;
 use itertools::Itertools;
 use nalgebra::Vector2;
@@ -7,7 +11,6 @@ use std::{
     collections::{BTreeMap, HashMap},
     iter::once,
 };
-use bytemuck::cast_slice;
 use vulkano::{
     buffer::Subbuffer,
     command_buffer::{PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents},
@@ -26,7 +29,6 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, Subpass},
     sync::GpuFuture,
 };
-use gpu_compute::execute_util::QuadMethod;
 
 
 fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
@@ -45,7 +47,7 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
         .vertex_shader(
             vs.entry_point("main").unwrap(),
             vs::SpecializationConstants {
-                DATA_SCALE: if method == QuadMethod::LargeTriangle {
+                DATA_SCALE: if method == QuadMethod::large_triangle {
                     2
                 } else {
                     1
@@ -53,7 +55,7 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
             },
         )
         .rasterization_state(RasterizationState::new().polygon_mode(
-            if method == QuadMethod::FillRectangle {
+            if method == QuadMethod::fill_rectangle {
                 PolygonMode::FillRectangle
             } else {
                 PolygonMode::Fill
@@ -97,7 +99,7 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
         }))
         .bind_pipeline_graphics(pipeline.clone())
         .bind_vertex_buffers(0, vulkan.vertex_buffer())
-        .draw(if method == QuadMethod::TwoTriangles {vulkan.vertex_buffer().len() as _} else {3}, 1, 0, 0)
+        .draw(if method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3}, 1, 0, 0)
         .unwrap()
 
         // End rendering

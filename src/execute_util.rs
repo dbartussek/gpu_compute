@@ -50,6 +50,7 @@ pub struct ExecuteUtil<Type> {
     expected_result: Type,
 
     output: OutputKind,
+    method: QuadMethod,
 
     accumulate: Box<dyn Fn(Type, Type) -> Type>,
 }
@@ -72,7 +73,7 @@ pub enum OutputKind {
 }
 
 impl OutputKind {
-    fn to_render_pass_key(&self) -> RenderPassKey {
+    fn to_render_pass_key(self) -> RenderPassKey {
         RenderPassKey {
             format: match self {
                 OutputKind::Attachment => Some(Format::R32_UINT),
@@ -83,19 +84,20 @@ impl OutputKind {
 }
 
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
+#[allow(non_camel_case_types)]
 pub enum QuadMethod {
-    TwoTriangles,
-    LargeTriangle,
-    FillRectangle,
+    two_triangles,
+    large_triangle,
+    fill_rectangle,
 }
 
 impl QuadMethod {
     pub fn all(vulkan: &VulkanData) -> &'static [QuadMethod] {
-        static BASIC: &[QuadMethod] = &[QuadMethod::TwoTriangles, QuadMethod::LargeTriangle];
+        static BASIC: &[QuadMethod] = &[QuadMethod::two_triangles, QuadMethod::large_triangle];
         static WITH_RECTANGLE: &[QuadMethod] = &[
-            QuadMethod::TwoTriangles,
-            QuadMethod::LargeTriangle,
-            QuadMethod::FillRectangle,
+            QuadMethod::two_triangles,
+            QuadMethod::large_triangle,
+            QuadMethod::fill_rectangle,
         ];
 
         if vulkan.supports_fill_rectangle {
@@ -116,6 +118,8 @@ where
         fs: &ShaderModule,
         sc: SC,
         output: OutputKind,
+        method: QuadMethod,
+
         accumulate: Acc,
 
         specialized_init: INIT,
@@ -135,8 +139,23 @@ where
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
         let pipeline = GraphicsPipeline::start()
             .vertex_input_state(MVertex::per_vertex())
-            .vertex_shader(vert.entry_point("main").unwrap(), vs::SpecializationConstants{DATA_SCALE: 1})
-            // .rasterization_state(RasterizationState::new().polygon_mode(PolygonMode::FillRectangle))
+            .vertex_shader(
+                vert.entry_point("main").unwrap(),
+                vs::SpecializationConstants {
+                    DATA_SCALE: if method == QuadMethod::large_triangle {
+                        2
+                    } else {
+                        1
+                    },
+                },
+            )
+            .rasterization_state(RasterizationState::new().polygon_mode(
+                if method == QuadMethod::fill_rectangle {
+                    PolygonMode::FillRectangle
+                } else {
+                    PolygonMode::Fill
+                },
+            ))
             .input_assembly_state(
                 InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
             )
@@ -161,6 +180,7 @@ where
             instance_id: 1,
             expected_result,
             output,
+            method,
             accumulate: Box::new(accumulate),
         }
     }
@@ -172,6 +192,7 @@ where
         fs: &ShaderModule,
         sc: SC,
         output: OutputKind,
+        method: QuadMethod,
 
         framebuffer_y: u32,
         vectorization_factor: u32,
@@ -193,6 +214,7 @@ where
             fs,
             sc,
             output,
+            method,
             accumulate,
             move |vulkan, pipeline| {
                 let mut command_buffer = vulkan.create_command_buffer();
@@ -241,6 +263,7 @@ where
         fs: &ShaderModule,
         sc: SC,
         output: OutputKind,
+        method: QuadMethod,
 
         framebuffer_y: u32,
 
@@ -253,8 +276,14 @@ where
         let raw_data = generate_data(data_size.x * data_size.y).collect_vec();
         let expected = raw_data.iter().copied().reduce(&accumulate).unwrap();
 
-        let mut executor =
-            Self::generic_setup(vulkan, fs, sc, output, accumulate, |vulkan, pipeline| {
+        let mut executor = Self::generic_setup(
+            vulkan,
+            fs,
+            sc,
+            output,
+            method,
+            accumulate,
+            |vulkan, pipeline| {
                 let mut command_buffer = vulkan.create_command_buffer();
 
 
@@ -302,7 +331,8 @@ where
                     set,
                     expected,
                 )
-            });
+            },
+        );
 
         executor.instance_id = data_size.y;
 
@@ -347,7 +377,7 @@ where
                 self.set.clone(),
             )
             .bind_vertex_buffers(0, vulkan.vertex_buffer())
-            .draw(vulkan.vertex_buffer().len() as _, 1, 0, self.instance_id)
+            .draw(if self.method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3}, 1, 0, self.instance_id)
             .unwrap()
 
             // End rendering
@@ -462,7 +492,7 @@ where
                 target_set,
             )
             .bind_vertex_buffers(0, vulkan.vertex_buffer())
-            .draw(vulkan.vertex_buffer().len() as _, 1, 0, self.instance_id)
+            .draw(if self.method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3}, 1, 0, self.instance_id)
             .unwrap()
 
             // End rendering

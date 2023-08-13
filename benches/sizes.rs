@@ -2,7 +2,7 @@
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use gpu_compute::{
-    execute_util::{ExecuteUtil, OutputKind},
+    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
@@ -45,6 +45,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             TEXTURE_SIZE_Y: frame_y,
                         },
                         OutputKind::Buffer,
+                        QuadMethod::large_triangle,
                         frame_y as _,
                         1,
                         |a, b| a + b,
