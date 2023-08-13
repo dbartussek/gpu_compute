@@ -87,6 +87,11 @@ impl VulkanData {
                                 !q.queue_flags.intersects(QueueFlags::GRAPHICS)
                                     && q.queue_flags.intersects(QueueFlags::COMPUTE)
                             })
+                            .or_else(|| {
+                                p.queue_family_properties()
+                                    .iter()
+                                    .position(|q| q.queue_flags.intersects(QueueFlags::COMPUTE))
+                            })
                             .map(|compute| (p, graphics, compute as u32))
                     })
             })
@@ -102,6 +107,24 @@ impl VulkanData {
 
         dbg!(physical_device.supported_extensions().nv_fill_rectangle);
 
+        let queues = if queue_family_index != queue_compute {
+            vec![
+                QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                },
+                QueueCreateInfo {
+                    queue_family_index: queue_compute,
+                    ..Default::default()
+                },
+            ]
+        } else {
+            vec![QueueCreateInfo {
+                queue_family_index,
+                ..Default::default()
+            }]
+        };
+
         let (device, mut queues) = Device::new(
             physical_device.clone(),
             DeviceCreateInfo {
@@ -114,22 +137,17 @@ impl VulkanData {
                     fill_mode_non_solid: true,
                     ..Default::default()
                 },
-                queue_create_infos: vec![
-                    QueueCreateInfo {
-                        queue_family_index,
-                        ..Default::default()
-                    },
-                    QueueCreateInfo {
-                        queue_family_index: queue_compute,
-                        ..Default::default()
-                    },
-                ],
+                queue_create_infos: queues,
                 ..Default::default()
             },
         )
         .unwrap();
         let queue = queues.next().unwrap();
-        let queue_compute = queues.next().unwrap();
+        let queue_compute = if queue_family_index != queue_compute {
+            queues.next().unwrap()
+        } else {
+            queue.clone()
+        };
 
         println!(
             "Using device: {} (type: {:?})",
