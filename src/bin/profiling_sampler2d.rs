@@ -37,7 +37,8 @@ fn main() {
     )
     .unwrap();
 
-    let data_size = Vector2::<u32>::new(128, 128);
+    let data_size = Vector2::<u32>::new(256, 256);
+    let work_size_y = 16u32;
 
     let shader = attach_none_sampled_loop::load(vulkan.device.clone()).unwrap();
     let mut execute = ExecuteUtil::<u32>::setup_2d_sampler(
@@ -45,11 +46,11 @@ fn main() {
         data_size,
         &shader,
         attach_none_sampled_loop::SpecializationConstants {
-            TEXTURE_SIZE_X: data_size.x as _,
+            TEXTURE_SIZE_X: (data_size.x / work_size_y) as i32,
             TEXTURE_SIZE_Y: 1,
         },
         OutputKind::Attachment,
-        2,
+        work_size_y,
         |a, b| a + b,
     );
 
