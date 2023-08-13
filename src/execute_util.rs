@@ -90,6 +90,7 @@ impl OutputKind {
 pub enum QuadMethod {
     two_triangles,
     large_triangle,
+    #[cfg(feature = "fill_rectangle")]
     fill_rectangle,
 }
 
@@ -99,6 +100,7 @@ impl QuadMethod {
         static WITH_RECTANGLE: &[QuadMethod] = &[
             QuadMethod::two_triangles,
             QuadMethod::large_triangle,
+            #[cfg(feature = "fill_rectangle")]
             QuadMethod::fill_rectangle,
         ];
 
@@ -152,9 +154,14 @@ where
                 },
             )
             .rasterization_state(RasterizationState::new().polygon_mode(
-                if method == QuadMethod::fill_rectangle {
-                    PolygonMode::FillRectangle
-                } else {
+                {
+                    #[cfg(feature = "fill_rectangle")]
+                    if method == QuadMethod::fill_rectangle {
+                        PolygonMode::FillRectangle
+                    } else {
+                        PolygonMode::Fill
+                    }
+                    #[cfg(not(feature = "fill_rectangle"))]
                     PolygonMode::Fill
                 },
             ))

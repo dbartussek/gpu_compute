@@ -54,13 +54,16 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
                 },
             },
         )
-        .rasterization_state(RasterizationState::new().polygon_mode(
+        .rasterization_state(RasterizationState::new().polygon_mode({
+            #[cfg(feature = "fill_rectangle")]
             if method == QuadMethod::fill_rectangle {
                 PolygonMode::FillRectangle
             } else {
                 PolygonMode::Fill
-            },
-        ))
+            }
+            #[cfg(not(feature = "fill_rectangle"))]
+            PolygonMode::Fill
+        }))
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip))
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .fragment_shader(fs.entry_point("main").unwrap(), ())
