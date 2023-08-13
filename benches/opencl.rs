@@ -110,7 +110,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     {
         let mut g = c.benchmark_group("gpu_sum");
-        g.measurement_time(Duration::from_secs(30));
+        // g.measurement_time(std::time::Duration::from_secs(30));
+        g.sample_size(10);
 
         for data_size in sizes.clone() {
             do_cl_bench::<u32, _>(
@@ -133,7 +134,8 @@ fn criterion_benchmark(c: &mut Criterion) {
     }
     {
         let mut g = c.benchmark_group("gpu_min_f32");
-        g.measurement_time(Duration::from_secs(30));
+        // g.measurement_time(std::time::Duration::from_secs(30));
+        g.sample_size(10);
 
         for data_size in sizes.clone() {
             do_cl_bench::<f32, _>(

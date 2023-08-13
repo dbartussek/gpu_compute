@@ -6,13 +6,13 @@ use gpu_compute::{
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
-use std::time::Duration;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut vulkan = VulkanData::init();
 
     let mut g = c.benchmark_group("optimal_accumulate_size");
-    g.measurement_time(Duration::from_secs(10));
+    // g.measurement_time(std::time::Duration::from_secs(30));
+    g.sample_size(10);
 
     for data_size in [1u32 << 16, 1 << 17, 1 << 27, 1 << 28, 1 << 29]
     //(16..30).map(|shift| 1u32 << shift)

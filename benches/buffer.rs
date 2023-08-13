@@ -6,13 +6,13 @@ use gpu_compute::{
     GPU_THREAD_COUNT, PROFILING_SIZES,
 };
 use nalgebra::Vector2;
-use std::time::Duration;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut vulkan = VulkanData::init();
 
     let mut g = c.benchmark_group("gpu_sum");
-    g.measurement_time(Duration::from_secs(30));
+    // g.measurement_time(std::time::Duration::from_secs(30));
+    g.sample_size(10);
 
 
     println!("{:X?}", *PROFILING_SIZES);
@@ -129,7 +129,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     },
                 );
 
-                if false {
+                if data_size.y % 4 == 0 {
                     g.bench_with_input(
                         BenchmarkId::new(format!("vector_buffer_to_buffer_{suffix}"), y),
                         &y,
@@ -143,7 +143,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                                 &shader,
                                 vector_buffer_none_sbuffer_loop::SpecializationConstants {
                                     TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
-                                    TEXTURE_SIZE_Y: 1,
+                                    TEXTURE_SIZE_Y: framebuffer_y as _,
                                 },
                                 OutputKind::Buffer,
                                 method,
