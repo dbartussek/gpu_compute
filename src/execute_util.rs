@@ -1,12 +1,18 @@
 use crate::vulkan_util::{MVertex, RenderPassKey, VulkanData};
+use bytemuck::Pod;
 use itertools::Itertools;
 use nalgebra::Vector2;
-use num::NumCast;
+use num::{NumCast, Zero};
 use rand::{Rng, SeedableRng};
 use rand_pcg::Pcg64Mcg;
-use std::{fmt::Debug, hint::black_box, iter::once, sync::Arc};
+use std::{
+    fmt::Debug,
+    hint::black_box,
+    iter::{once, Sum},
+    sync::Arc,
+};
 use vulkano::{
-    buffer::{Buffer, BufferCreateInfo, BufferUsage, Subbuffer},
+    buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
         CopyBufferInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo, SubpassContents,
     },
@@ -33,7 +39,7 @@ use vulkano::{
     DeviceSize,
 };
 
-pub struct ExecuteUtil {
+pub struct ExecuteUtil<Type> {
     viewport_size: Vector2<u32>,
     render_pass: Arc<RenderPass>,
     pipeline: Arc<GraphicsPipeline>,
@@ -41,11 +47,11 @@ pub struct ExecuteUtil {
 
     instance_id: u32,
 
-    expected_result: u32,
+    expected_result: Type,
 
     output: OutputKind,
 
-    accumulate: Box<dyn Fn(u32, u32) -> u32>,
+    accumulate: Box<dyn Fn(Type, Type) -> Type>,
 }
 
 pub fn generate_data<Type>(length: u32) -> impl ExactSizeIterator<Item = Type>
@@ -76,7 +82,34 @@ impl OutputKind {
     }
 }
 
-impl ExecuteUtil {
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
+pub enum QuadMethod {
+    TwoTriangles,
+    LargeTriangle,
+    FillRectangle,
+}
+
+impl QuadMethod {
+    pub fn all(vulkan: &VulkanData) -> &'static [QuadMethod] {
+        static BASIC: &[QuadMethod] = &[QuadMethod::TwoTriangles, QuadMethod::LargeTriangle];
+        static WITH_RECTANGLE: &[QuadMethod] = &[
+            QuadMethod::TwoTriangles,
+            QuadMethod::LargeTriangle,
+            QuadMethod::FillRectangle,
+        ];
+
+        if vulkan.supports_fill_rectangle {
+            WITH_RECTANGLE
+        } else {
+            BASIC
+        }
+    }
+}
+
+impl<Type> ExecuteUtil<Type>
+where
+    Type: Copy + NumCast + Pod + BufferContents + PartialEq + Zero + Debug + Sum,
+{
     #[inline(always)]
     fn generic_setup<SC, INIT, Acc>(
         vulkan: &mut VulkanData,
@@ -89,11 +122,11 @@ impl ExecuteUtil {
     ) -> Self
     where
         SC: SpecializationConstants,
-        Acc: 'static + Fn(u32, u32) -> u32,
+        Acc: 'static + Fn(Type, Type) -> Type,
         INIT: FnOnce(
             &mut VulkanData,
             &Arc<GraphicsPipeline>,
-        ) -> (Vector2<u32>, Arc<PersistentDescriptorSet>, u32),
+        ) -> (Vector2<u32>, Arc<PersistentDescriptorSet>, Type),
     {
         let render_pass = vulkan.create_render_pass(output.to_render_pass_key());
 
@@ -147,7 +180,7 @@ impl ExecuteUtil {
     ) -> Self
     where
         SC: SpecializationConstants,
-        Acc: 'static + Fn(u32, u32) -> u32,
+        Acc: 'static + Fn(Type, Type) -> Type,
     {
         assert_eq!(data_size.x % framebuffer_y, 0);
 
@@ -202,66 +235,78 @@ impl ExecuteUtil {
     }
 
     #[inline(always)]
-    pub fn setup_1d_sampler<SC, Acc>(
+    pub fn setup_2d_sampler<SC, Acc>(
         vulkan: &mut VulkanData,
-        data_size: usize,
+        data_size: Vector2<u32>,
         fs: &ShaderModule,
         sc: SC,
         output: OutputKind,
+
+        framebuffer_y: u32,
 
         accumulate: Acc,
     ) -> Self
     where
         SC: SpecializationConstants,
-        Acc: 'static + Fn(u32, u32) -> u32,
+        Acc: 'static + Fn(Type, Type) -> Type,
     {
-        let raw_data = generate_data(data_size as u32).collect_vec();
+        let raw_data = generate_data(data_size.x * data_size.y).collect_vec();
         let expected = raw_data.iter().copied().reduce(&accumulate).unwrap();
 
-        Self::generic_setup(vulkan, fs, sc, output, accumulate, |vulkan, pipeline| {
-            let mut command_buffer = vulkan.create_command_buffer();
+        let mut executor =
+            Self::generic_setup(vulkan, fs, sc, output, accumulate, |vulkan, pipeline| {
+                let mut command_buffer = vulkan.create_command_buffer();
 
 
-            let data = vulkan.create_1d_data_sample_image(
-                &mut command_buffer,
-                raw_data.iter().copied(),
-                Format::R32_UINT,
-            );
+                let data = vulkan.create_2d_data_sample_image(
+                    &mut command_buffer,
+                    data_size,
+                    raw_data.iter().copied(),
+                    Format::R32_UINT,
+                );
 
-            command_buffer
-                .build()
-                .unwrap()
-                .execute(vulkan.queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .wait(None)
+                command_buffer
+                    .build()
+                    .unwrap()
+                    .execute(vulkan.queue.clone())
+                    .unwrap()
+                    .then_signal_fence_and_flush()
+                    .unwrap()
+                    .wait(None)
+                    .unwrap();
+
+                let descriptor_set_allocator =
+                    StandardDescriptorSetAllocator::new(vulkan.device.clone());
+                let sampler = Sampler::new(
+                    vulkan.device.clone(),
+                    SamplerCreateInfo {
+                        unnormalized_coordinates: true,
+                        ..Default::default()
+                    },
+                )
                 .unwrap();
 
-            let descriptor_set_allocator =
-                StandardDescriptorSetAllocator::new(vulkan.device.clone());
-            let sampler = Sampler::new(
-                vulkan.device.clone(),
-                SamplerCreateInfo {
-                    unnormalized_coordinates: true,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
+                let set = PersistentDescriptorSet::new(
+                    &descriptor_set_allocator,
+                    pipeline.layout().set_layouts().get(0).unwrap().clone(),
+                    [WriteDescriptorSet::image_view_sampler(
+                        0,
+                        ImageView::new_default(data).unwrap(),
+                        sampler,
+                    )],
+                )
+                .unwrap();
 
-            let set = PersistentDescriptorSet::new(
-                &descriptor_set_allocator,
-                pipeline.layout().set_layouts().get(0).unwrap().clone(),
-                [WriteDescriptorSet::image_view_sampler(
-                    0,
-                    ImageView::new_default(data).unwrap(),
-                    sampler,
-                )],
-            )
-            .unwrap();
+                (
+                    Vector2::new(data_size.x / framebuffer_y, framebuffer_y),
+                    set,
+                    expected,
+                )
+            });
 
-            (Vector2::new(data_size as _, 1), set, expected)
-        })
+        executor.instance_id = data_size.y;
+
+        executor
     }
 
     #[inline(always)]
@@ -309,7 +354,7 @@ impl ExecuteUtil {
             .end_render_pass()
             .unwrap();
 
-        let read_buffer: Subbuffer<[u32]> =
+        let read_buffer: Subbuffer<[Type]> =
             vulkan.download_image(&mut command_buffer, target.clone());
 
         let future = command_buffer
@@ -332,13 +377,14 @@ impl ExecuteUtil {
                 .unwrap(),
         );
         assert_eq!(result, self.expected_result);
+        // dbg!(result, self.expected_result);
     }
 
     #[inline(always)]
     fn run_for_buffer(&mut self, vulkan: &mut VulkanData, separate_read_buffer: bool) {
         let mut command_buffer = vulkan.create_command_buffer();
 
-        let target: Subbuffer<[u32]> = Buffer::new_slice(
+        let target: Subbuffer<[Type]> = Buffer::new_slice(
             &vulkan.memory_allocator,
             BufferCreateInfo {
                 usage: BufferUsage::STORAGE_BUFFER | BufferUsage::TRANSFER_SRC,

@@ -21,7 +21,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
         g.bench_with_input(BenchmarkId::new("buffer_to_rendertarget", y), &y, |b, _| {
             let shader = attach_discard_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-            let mut execute = ExecuteUtil::setup_storage_buffer(
+            let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
                 &mut vulkan,
                 data_size,
                 &shader,
@@ -40,9 +40,33 @@ fn criterion_benchmark(c: &mut Criterion) {
             });
         });
 
+        g.bench_with_input(
+            BenchmarkId::new("sampler2d_to_rendertarget", y),
+            &y,
+            |b, _| {
+                let shader = attach_none_sampled_loop::load(vulkan.device.clone()).unwrap();
+                let mut execute = ExecuteUtil::<u32>::setup_2d_sampler(
+                    &mut vulkan,
+                    data_size,
+                    &shader,
+                    attach_none_sampled_loop::SpecializationConstants {
+                        TEXTURE_SIZE_X: data_size.x as _,
+                        TEXTURE_SIZE_Y: data_size.y as _,
+                    },
+                    OutputKind::Attachment,
+                    1,
+                    |a, b| a + b,
+                );
+
+                b.iter(|| {
+                    execute.run(&mut vulkan, true);
+                });
+            },
+        );
+
         g.bench_with_input(BenchmarkId::new("buffer_to_buffer", y), &y, |b, _| {
             let shader = buffer_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-            let mut execute = ExecuteUtil::setup_storage_buffer(
+            let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
                 &mut vulkan,
                 data_size,
                 &shader,
@@ -65,7 +89,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             &y,
             |b, _| {
                 let shader = buffer_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-                let mut execute = ExecuteUtil::setup_storage_buffer(
+                let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
                     &mut vulkan,
                     data_size,
                     &shader,
@@ -139,7 +163,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     |b, _| {
                         let shader =
                             vector_buffer_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-                        let mut execute = ExecuteUtil::setup_storage_buffer(
+                        let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
                             &mut vulkan,
                             data_size,
                             &shader,
@@ -300,5 +324,14 @@ mod vector_compute_none_sbuffer_loop {
         path: "shaders/instances/gpu_sum/vectorized/buffer_none_sbuffer_loop.glsl",
         include: ["shaders/pluggable"],
         define: [("COMPUTE_SHADER", "1")],
+    }
+}
+
+
+mod attach_none_sampled_loop {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        path: "shaders/instances/gpu_sum/attach_none_sampled2D_loop.glsl",
+        include: ["shaders/pluggable"],
     }
 }

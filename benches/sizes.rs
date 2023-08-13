@@ -36,7 +36,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     let frame_y = 4;
 
                     let shader = buffer_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-                    let mut execute = ExecuteUtil::setup_storage_buffer(
+                    let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
                         &mut vulkan,
                         Vector2::new(group_size, data_size.div_ceil(group_size)),
                         &shader,

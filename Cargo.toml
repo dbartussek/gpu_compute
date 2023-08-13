@@ -13,6 +13,7 @@ qutex = { git = "https://github.com/dbartussek/qutex.git" }
 byte-unit = "4.0.19"
 bytemuck = "1.13.1"
 derivative = "2.2.0"
+image = "0.24.7"
 itertools = "0.10.5"
 lazy_static = "1.4.0"
 nalgebra = { version = "0.32.2", features = ["bytemuck"] }
@@ -25,6 +26,7 @@ rayon = "1.7.0"
 renderdoc = "0.11.0"
 serde = { version = "1.0.164", features = ["derive"] }
 serde_json = "1.0.97"
+sha3 = "0.10.8"
 smallstr = { version = "0.3.0", features = ["serde", "union"] }
 smallvec = { version = "1.10.0", features = ["serde", "union"] }
 vulkano = "0.33.0"

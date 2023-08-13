@@ -42,6 +42,8 @@ pub struct VulkanData {
 
     render_pass_cache: HashMap<RenderPassKey, Arc<RenderPass>>,
     vertex_buffer: Subbuffer<[MVertex]>,
+
+    pub supports_fill_rectangle: bool,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -98,11 +100,13 @@ impl VulkanData {
             })
             .unwrap();
 
+        dbg!(physical_device.supported_extensions().nv_fill_rectangle);
+
         let (device, mut queues) = Device::new(
             physical_device.clone(),
             DeviceCreateInfo {
                 enabled_extensions: DeviceExtensions {
-                    // nv_fill_rectangle: true,
+                    nv_fill_rectangle: physical_device.supported_extensions().nv_fill_rectangle,
                     khr_swapchain: true,
                     ..Default::default()
                 },
@@ -156,7 +160,7 @@ impl VulkanData {
 
         Self {
             instance,
-            physical_device,
+            physical_device: physical_device.clone(),
             device,
             queue,
             queue_compute,
@@ -165,6 +169,7 @@ impl VulkanData {
             descriptor_set_allocator,
             render_pass_cache: Default::default(),
             vertex_buffer,
+            supports_fill_rectangle: physical_device.supported_extensions().nv_fill_rectangle,
         }
     }
 
@@ -310,6 +315,41 @@ impl VulkanData {
             iter,
             ImageDimensions::Dim1d {
                 width: size as _,
+                array_layers: 1,
+            },
+            MipmapsCount::One,
+            format,
+            command_buffer,
+        )
+        .unwrap()
+    }
+
+    pub fn create_2d_data_sample_image<Px, I>(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        size: Vector2<u32>,
+        iter: I,
+        format: Format,
+    ) -> Arc<ImmutableImage>
+    where
+        Px: BufferContents,
+        I: IntoIterator<Item = Px>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let pixel_bits = format
+            .components()
+            .iter()
+            .copied()
+            .map(|i| i as usize)
+            .sum::<usize>();
+        assert_eq!(pixel_bits, std::mem::size_of::<Px>() * 8);
+
+        ImmutableImage::from_iter(
+            &self.memory_allocator,
+            iter,
+            ImageDimensions::Dim2d {
+                width: size.x,
+                height: size.y,
                 array_layers: 1,
             },
             MipmapsCount::One,
