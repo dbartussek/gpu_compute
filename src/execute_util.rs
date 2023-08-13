@@ -41,6 +41,8 @@ use vulkano::{
 
 pub struct ExecuteUtil<Type> {
     viewport_size: Vector2<u32>,
+    vectorization_factor: u32,
+
     render_pass: Arc<RenderPass>,
     pipeline: Arc<GraphicsPipeline>,
     set: Arc<PersistentDescriptorSet>,
@@ -174,6 +176,7 @@ where
 
         Self {
             viewport_size,
+            vectorization_factor: 1,
             render_pass,
             pipeline,
             set,
@@ -252,6 +255,7 @@ where
             "Dimension Y must be a multiple of the vectorization factor"
         );
         executor.instance_id = data_size.y / vectorization_factor;
+        executor.vectorization_factor = vectorization_factor;
 
         executor
     }
@@ -428,7 +432,7 @@ where
                 },
                 ..Default::default()
             },
-            (self.viewport_size.x * self.viewport_size.y) as DeviceSize,
+            (self.viewport_size.x * self.viewport_size.y * self.vectorization_factor) as DeviceSize,
         )
         .unwrap();
         let read_buffer = if separate_read_buffer {
