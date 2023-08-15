@@ -30,8 +30,14 @@ use vulkano::{
     sync::GpuFuture,
 };
 
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+#[allow(non_camel_case_types)]
+enum Subgroup {
+    subgroup,
+    quad,
+}
 
-fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
+fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod, subgroup_type: Subgroup) {
     const FORMAT: Format = Format::R16G16_UINT;
 
     let render_pass = vulkan.create_render_pass(RenderPassKey {
@@ -39,7 +45,10 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
     });
 
     let vs = vs::load(vulkan.device.clone()).unwrap();
-    let fs = fs::load(vulkan.device.clone()).unwrap();
+    let fs = match subgroup_type {
+        Subgroup::subgroup => fs_subgroup::load(vulkan.device.clone()).unwrap(),
+        Subgroup::quad => fs_quad::load(vulkan.device.clone()).unwrap(),
+    };
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
     let pipeline = GraphicsPipeline::start()
@@ -141,7 +150,7 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod) {
         .collect_vec();
     let hashed = RgbImage::from_vec(size.x, size.y, hashed).unwrap();
 
-    let name = format!("subgroups/subgroups_{}x{}_{:?}", size.x, size.y, method);
+    let name = format!("subgroups/subgroups_{}x{}_{:?}_{:?}", size.x, size.y, method, subgroup_type);
     hashed.save(format!("{name}.hashed.png")).unwrap();
     // rg.save(format!("{name}.rg.png")).unwrap();
 
@@ -157,11 +166,12 @@ fn main() {
     let _ = std::fs::remove_dir_all("subgroups");
     let _ = std::fs::create_dir_all("subgroups");
 
-    for x in [1, 2, 8, 16, 32, 64, 128, 256] {
-        for y in [1, 2, 8, 16, 32, 64, 128, 256] {
+    for x in [1, 2, 8, 16, 32, 64, 128, 256, 31] {
+        for y in [1, 2, 8, 16, 32, 64, 128, 256, 31] {
             for method in QuadMethod::all(&vulkan) {
-                run(&mut vulkan, Vector2::new(x, y), *method);
+                run(&mut vulkan, Vector2::new(x, y), *method, Subgroup::subgroup);
             }
+            run(&mut vulkan, Vector2::new(x, y), QuadMethod::two_triangles, Subgroup::quad);
         }
     }
 }
@@ -172,11 +182,19 @@ mod vs {
         path: "shaders/basic.vs",
     }
 }
-mod fs {
+mod fs_subgroup {
     vulkano_shaders::shader! {
         ty: "fragment",
         spirv_version: "1.3",
         path: "shaders/instances/subgroup_find.glsl",
+        include: ["shaders/pluggable"],
+    }
+}
+mod fs_quad {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        spirv_version: "1.3",
+        path: "shaders/instances/subgroup_find_quad.glsl",
         include: ["shaders/pluggable"],
     }
 }
