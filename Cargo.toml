@@ -15,6 +15,7 @@ fill_rectangle = []
 [dependencies]
 byte-unit = "4.0.19"
 bytemuck = "1.13.1"
+clap = { version = "4.3.21", features = ["derive"] }
 derivative = "2.2.0"
 image = "0.24.7"
 itertools = "0.10.5"

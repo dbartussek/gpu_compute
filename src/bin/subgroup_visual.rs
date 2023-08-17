@@ -150,7 +150,10 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod, subgroup
         .collect_vec();
     let hashed = RgbImage::from_vec(size.x, size.y, hashed).unwrap();
 
-    let name = format!("subgroups/subgroups_{}x{}_{:?}_{:?}", size.x, size.y, method, subgroup_type);
+    let name = format!(
+        "subgroups/subgroups_{}x{}_{:?}_{:?}",
+        size.x, size.y, method, subgroup_type
+    );
     hashed.save(format!("{name}.hashed.png")).unwrap();
     // rg.save(format!("{name}.rg.png")).unwrap();
 
@@ -171,7 +174,12 @@ fn main() {
             for method in QuadMethod::all(&vulkan) {
                 run(&mut vulkan, Vector2::new(x, y), *method, Subgroup::subgroup);
             }
-            run(&mut vulkan, Vector2::new(x, y), QuadMethod::two_triangles, Subgroup::quad);
+            run(
+                &mut vulkan,
+                Vector2::new(x, y),
+                QuadMethod::two_triangles,
+                Subgroup::quad,
+            );
         }
     }
 }
