@@ -3,7 +3,6 @@ use gpu_compute::{
     execute_util::{ExecuteUtil, OutputKind, QuadMethod},
     execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
     vulkan_util::VulkanData,
-    GPU_THREAD_COUNT, PROFILING_SIZES,
 };
 use nalgebra::Vector2;
 
@@ -14,13 +13,15 @@ fn criterion_benchmark(c: &mut Criterion) {
     // g.measurement_time(std::time::Duration::from_secs(30));
     g.sample_size(10);
 
+    let profiling_sizes = vulkan.profiling_sizes();
 
-    println!("{:X?}", *PROFILING_SIZES);
-    for y in PROFILING_SIZES.clone() {
-        let data_size = Vector2::new(GPU_THREAD_COUNT, y / GPU_THREAD_COUNT);
+
+    println!("{:X?}", profiling_sizes);
+    for y in profiling_sizes.clone() {
+        let data_size = Vector2::new(vulkan.gpu_thread_count(), y / vulkan.gpu_thread_count());
 
         for method in QuadMethod::all(&vulkan).iter().copied() {
-            for framebuffer_y in [1, 2, 32] {
+            for framebuffer_y in [1, 2, 32, 64] {
                 let suffix = format!(
                     "{method:?}_{framebuffer_x}x{framebuffer_y}",
                     framebuffer_x = data_size.x / framebuffer_y
@@ -53,30 +54,32 @@ fn criterion_benchmark(c: &mut Criterion) {
                     },
                 );
 
-                g.bench_with_input(
-                    BenchmarkId::new(format!("sampler2d_to_rendertarget_{suffix}"), y),
-                    &y,
-                    |b, _| {
-                        let shader = attach_none_sampled_loop::load(vulkan.device.clone()).unwrap();
-                        let mut execute = ExecuteUtil::<u32>::setup_2d_sampler(
-                            &mut vulkan,
-                            data_size,
-                            &shader,
-                            attach_none_sampled_loop::SpecializationConstants {
-                                TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
-                                TEXTURE_SIZE_Y: data_size.y as _,
-                            },
-                            OutputKind::Attachment,
-                            method,
-                            framebuffer_y,
-                            |a, b| a + b,
-                        );
+                if data_size.y <= 32768 {
+                    g.bench_with_input(
+                        BenchmarkId::new(format!("sampler2d_to_rendertarget_{suffix}"), y),
+                        &y,
+                        |b, _| {
+                            let shader = attach_none_sampled_loop::load(vulkan.device.clone()).unwrap();
+                            let mut execute = ExecuteUtil::<u32>::setup_2d_sampler(
+                                &mut vulkan,
+                                data_size,
+                                &shader,
+                                attach_none_sampled_loop::SpecializationConstants {
+                                    TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
+                                    TEXTURE_SIZE_Y: data_size.y as _,
+                                },
+                                OutputKind::Attachment,
+                                method,
+                                framebuffer_y,
+                                |a, b| a + b,
+                            );
 
-                        b.iter(|| {
-                            execute.run(&mut vulkan, true);
-                        });
-                    },
-                );
+                            b.iter(|| {
+                                execute.run(&mut vulkan, true);
+                            });
+                        },
+                    );
+                }
 
                 g.bench_with_input(
                     BenchmarkId::new(format!("buffer_to_buffer_{suffix}"), y),
@@ -265,8 +268,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     {
         // This has AWFUL performance
-        let y = PROFILING_SIZES.first().copied().unwrap();
-        let data_size = Vector2::new(GPU_THREAD_COUNT, y / GPU_THREAD_COUNT);
+        let y = profiling_sizes.first().copied().unwrap();
+        let data_size = Vector2::new(vulkan.gpu_thread_count(), y / vulkan.gpu_thread_count());
 
         g.bench_with_input(
             BenchmarkId::new("compute_buffer_to_buffer_atomic_cpu_visible_memory", y),

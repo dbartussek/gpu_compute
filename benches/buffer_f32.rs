@@ -2,7 +2,6 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use gpu_compute::{
     execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
     vulkan_util::VulkanData,
-    GPU_THREAD_COUNT, PROFILING_SIZES,
 };
 use itertools::Itertools;
 use nalgebra::Vector2;
@@ -14,12 +13,14 @@ fn criterion_benchmark(c: &mut Criterion) {
     // g.measurement_time(std::time::Duration::from_secs(30));
     g.sample_size(10);
 
+    let profiling_sizes = vulkan.profiling_sizes();
 
-    println!("normal sizes: {:X?}", *PROFILING_SIZES);
-    println!("normal sizes: {:?}", *PROFILING_SIZES);
+
+    println!("normal sizes: {:X?}", profiling_sizes);
+    println!("normal sizes: {:?}", profiling_sizes);
     println!(
         "vector sizes: {:X?}",
-        PROFILING_SIZES
+        profiling_sizes
             .iter()
             .copied()
             .filter(|v| v % 4 == 0)
@@ -27,14 +28,14 @@ fn criterion_benchmark(c: &mut Criterion) {
     );
     println!(
         "vector sizes: {:?}",
-        PROFILING_SIZES
+        profiling_sizes
             .iter()
             .copied()
             .filter(|v| v % 4 == 0)
             .collect_vec()
     );
-    for y in PROFILING_SIZES.clone() {
-        let data_size = Vector2::new(GPU_THREAD_COUNT, y / GPU_THREAD_COUNT);
+    for y in profiling_sizes.clone() {
+        let data_size = Vector2::new(vulkan.gpu_thread_count(), y / vulkan.gpu_thread_count());
 
         g.bench_with_input(
             BenchmarkId::new("compute_buffer_to_buffer", y),

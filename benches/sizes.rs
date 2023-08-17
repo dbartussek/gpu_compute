@@ -1,10 +1,8 @@
 #![feature(int_roundings)]
 
+use std::collections::HashSet;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use gpu_compute::{
-    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
-    vulkan_util::VulkanData,
-};
+use gpu_compute::{execute_util::{ExecuteUtil, OutputKind, QuadMethod}, vulkan_util::VulkanData};
 use nalgebra::Vector2;
 
 fn criterion_benchmark(c: &mut Criterion) {
@@ -14,10 +12,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     // g.measurement_time(std::time::Duration::from_secs(30));
     g.sample_size(10);
 
-    for data_size in [1u32 << 16, 1 << 17, 1 << 27, 1 << 28, 1 << 29]
-    //(16..30).map(|shift| 1u32 << shift)
+    let mut dedup = HashSet::new();
+
+    for data_size in vulkan.profiling_sizes().iter().copied()
     {
         for group_size in [
+            64,
             256,
             512,
             4096,
@@ -25,10 +25,16 @@ fn criterion_benchmark(c: &mut Criterion) {
             16384,
             32768,
             65536,
-            8072,
-            8072 * 2,
-            8072 * 4,
+            // 8072,
+            // 8072 * 2,
+            // 8072 * 4,
         ] {
+            let data_size = data_size.div_ceil(group_size) * group_size;
+
+            if !dedup.insert((group_size, data_size)) {
+                continue;
+            }
+
             g.bench_with_input(
                 BenchmarkId::new(format!("group-{}", group_size), data_size),
                 &data_size,

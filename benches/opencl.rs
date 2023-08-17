@@ -5,13 +5,14 @@ use criterion::{
     black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId,
     Criterion,
 };
-use gpu_compute::{execute_util::generate_data, GPU_THREAD_COUNT, PROFILING_SIZES};
+use gpu_compute::{execute_util::generate_data};
 use itertools::Itertools;
 use num::{NumCast, Zero};
 use ocl::{r#async::BufferSink, Buffer, MemFlags, OclPrm, ProQue, WriteGuard};
 use ocl_futures::future::Future;
 use std::{fmt::Debug, time::Duration};
 use vulkano::buffer::BufferContents;
+use gpu_compute::vulkan_util::VulkanData;
 
 pub fn do_cl_bench<Type, Acc>(
     g: &mut BenchmarkGroup<WallTime>,
@@ -90,7 +91,9 @@ pub fn do_cl_bench<Type, Acc>(
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let sizes = PROFILING_SIZES.clone();
+    let vulkan = VulkanData::init();
+
+    let sizes = vulkan.profiling_sizes().clone();
     println!("{:X?}", sizes);
 
     {
@@ -117,7 +120,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             do_cl_bench::<u32, _>(
                 &mut g,
                 data_size,
-                GPU_THREAD_COUNT,
+                vulkan.gpu_thread_count(),
                 include_str!("../shaders/opencl/sum_column_major.cl"),
                 "opencl_column_major",
                 |a, b| a + b,
@@ -125,7 +128,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             do_cl_bench::<u32, _>(
                 &mut g,
                 data_size,
-                GPU_THREAD_COUNT,
+                vulkan.gpu_thread_count(),
                 include_str!("../shaders/opencl/sum_row_major.cl"),
                 "opencl_row_major",
                 |a, b| a + b,
@@ -141,7 +144,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             do_cl_bench::<f32, _>(
                 &mut g,
                 data_size,
-                GPU_THREAD_COUNT,
+                vulkan.gpu_thread_count(),
                 include_str!("../shaders/opencl/min_column_major_f32.cl"),
                 "opencl_column_major",
                 |a, b| a.min(b),
@@ -149,7 +152,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             do_cl_bench::<f32, _>(
                 &mut g,
                 data_size,
-                GPU_THREAD_COUNT,
+                vulkan.gpu_thread_count(),
                 include_str!("../shaders/opencl/min_row_major_f32.cl"),
                 "opencl_row_major",
                 |a, b| a.min(b),

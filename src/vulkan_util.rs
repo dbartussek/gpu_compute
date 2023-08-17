@@ -5,6 +5,7 @@ use std::{
     collections::{hash_map::Entry, HashMap},
     sync::Arc,
 };
+use itertools::Itertools;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -44,6 +45,8 @@ pub struct VulkanData {
     vertex_buffer: Subbuffer<[MVertex]>,
 
     pub supports_fill_rectangle: bool,
+
+    max_size: u32,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -176,6 +179,11 @@ impl VulkanData {
 
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
+        let max_size = physical_device.properties().max_image_dimension2_d.min(physical_device.properties().max_viewport_dimensions[0]);
+        println!("Maximum render size: {:?}", physical_device.properties().max_viewport_dimensions);
+        println!("Maximum 2d image size: {}", physical_device.properties().max_image_dimension2_d);
+        println!("Maximum overall size: {}", max_size);
+
         Self {
             instance,
             physical_device: physical_device.clone(),
@@ -188,7 +196,27 @@ impl VulkanData {
             render_pass_cache: Default::default(),
             vertex_buffer,
             supports_fill_rectangle: physical_device.supported_extensions().nv_fill_rectangle,
+            max_size,
         }
+    }
+
+    pub fn profiling_sizes(&self) -> Vec<u32> {
+        [1u32]
+            .into_iter()
+            // .chain((0..=(50_000 * 4)).step_by(256 * 32 * 32))
+            // .chain(((50_000 * 4)..=(50_000 * 64)).step_by(256 * 256 * 10))
+            // .chain(((0)..=(50_000 * 64 * 64)).step_by(256 * 256 * 12 * 64))
+            .chain((0..29).step_by(2).map(|l| 1 << l))
+            .chain([1 << 29])
+            .filter(|v| *v != 0)
+            .map(|v| v.div_ceil(self.max_size) * self.max_size)
+            .unique()
+            .sorted()
+            .collect_vec()
+    }
+
+    pub fn gpu_thread_count(&self) -> u32 {
+        self.max_size
     }
 
     pub fn create_command_buffer(&self) -> AutoCommandBufferBuilder<PrimaryAutoCommandBuffer> {
