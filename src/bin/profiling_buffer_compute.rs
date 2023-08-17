@@ -2,11 +2,11 @@
 
 use clap::Parser;
 use gpu_compute::{
+    execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
 use std::{sync::Arc, time::Duration};
-use std::io::stdin;
 use vulkano::{
     image::ImageUsage,
     swapchain::{acquire_next_image, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
@@ -17,31 +17,15 @@ use winit::{
     event_loop::EventLoop,
     window::Window,
 };
-use gpu_compute::execute_util::{ExecuteUtil, OutputKind, QuadMethod};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(short, long, default_value_t = false)]
-    pub separate_read_buffer: bool,
-    #[arg(short, long, default_value_t = false)]
-    pub exit: bool,
-
-    #[arg(short, long, default_value_t = 1)]
-    pub framebuffer_y: u32,
-
-    #[arg(short, long, default_value_t = 100_000_000u32)]
-    pub data_size: u32,
+    separate_read_buffer: bool,
 }
 
 fn main() {
-    let hook = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |p| {
-        hook(p);
-        std::fs::write("exit.txt", format!("Panic {:#?}", p)).unwrap();
-        let _ = stdin().read_line(&mut Default::default());
-    }));
-
     let args = Args::parse();
 
     let mut vulkan = VulkanData::init();
@@ -63,21 +47,20 @@ fn main() {
     )
     .unwrap();
 
-    let data_size = Vector2::<u32>::new(256 * 32, args.data_size.div_ceil(32 * 256));
+    let data_size = Vector2::<u32>::new(256 * 32, 100_000_000u32.div_ceil(32 * 256));
 
     let shader = compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-    let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
+    let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
         &mut vulkan,
         data_size,
         &shader,
         compute_none_sbuffer_loop::SpecializationConstants {
-            TEXTURE_SIZE_X: (data_size.x / args.framebuffer_y) as _,
-            TEXTURE_SIZE_Y: args.framebuffer_y as _,
+            TEXTURE_SIZE_X: data_size.x as _,
+            TEXTURE_SIZE_Y: 1,
         },
-        OutputKind::Buffer,
-        QuadMethod::two_triangles,
-        args.framebuffer_y,
-        1,
+        ComputeParameters {
+            ..ComputeParameters::default()
+        },
         |a, b| a + b,
     );
 
@@ -88,7 +71,6 @@ fn main() {
             event,
         } => {
             if event == WindowEvent::CloseRequested {
-                std::fs::write("exit.txt", format!("Window closed")).unwrap();
                 control.set_exit();
             }
         },
@@ -109,12 +91,7 @@ fn main() {
                 .unwrap();
             future.wait(None).unwrap();
 
-            if args.exit {
-                std::fs::write("exit.txt", format!("Immediate exit")).unwrap();
-                control.set_exit();
-            } else {
-                std::thread::sleep(Duration::from_millis(10));
-            }
+            std::thread::sleep(Duration::from_millis(10));
         },
         Event::RedrawRequested(_) => {},
         Event::RedrawEventsCleared => {},
@@ -124,9 +101,9 @@ fn main() {
 
 mod compute_none_sbuffer_loop {
     vulkano_shaders::shader! {
-        ty: "fragment",
+        ty: "compute",
         path: "shaders/instances/gpu_sum/buffer_none_sbuffer_loop.glsl",
         include: ["shaders/pluggable"],
-        // define: [("COMPUTE_SHADER", "1")],
+        define: [("COMPUTE_SHADER", "1")],
     }
 }

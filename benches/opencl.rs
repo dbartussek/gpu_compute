@@ -5,14 +5,13 @@ use criterion::{
     black_box, criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId,
     Criterion,
 };
-use gpu_compute::{execute_util::generate_data};
+use gpu_compute::{execute_util::generate_data, vulkan_util::VulkanData};
 use itertools::Itertools;
 use num::{NumCast, Zero};
 use ocl::{r#async::BufferSink, Buffer, MemFlags, OclPrm, ProQue, WriteGuard};
 use ocl_futures::future::Future;
 use std::{fmt::Debug, time::Duration};
 use vulkano::buffer::BufferContents;
-use gpu_compute::vulkan_util::VulkanData;
 
 pub fn do_cl_bench<Type, Acc>(
     g: &mut BenchmarkGroup<WallTime>,

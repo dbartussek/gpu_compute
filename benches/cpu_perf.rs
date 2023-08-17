@@ -1,6 +1,7 @@
 #![feature(portable_simd)]
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use gpu_compute::vulkan_util::VulkanData;
 use itertools::Itertools;
 use rayon::prelude::*;
 use std::{
@@ -8,7 +9,6 @@ use std::{
     ops::{Add, AddAssign},
     simd::{u32x16, SimdUint},
 };
-use gpu_compute::vulkan_util::VulkanData;
 
 fn accumulate<T>(i: &[T]) -> T
 where

@@ -59,7 +59,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                         BenchmarkId::new(format!("sampler2d_to_rendertarget_{suffix}"), y),
                         &y,
                         |b, _| {
-                            let shader = attach_none_sampled_loop::load(vulkan.device.clone()).unwrap();
+                            let shader =
+                                attach_none_sampled_loop::load(vulkan.device.clone()).unwrap();
                             let mut execute = ExecuteUtil::<u32>::setup_2d_sampler(
                                 &mut vulkan,
                                 data_size,
@@ -269,7 +270,10 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         // This has AWFUL performance
         let y = profiling_sizes.first().copied().unwrap();
-        let data_size = Vector2::new(vulkan.gpu_thread_count(), y / vulkan.gpu_thread_count());
+        let data_size = Vector2::new(
+            vulkan.gpu_thread_count() / 2,
+            y * 2 / vulkan.gpu_thread_count(),
+        );
 
         g.bench_with_input(
             BenchmarkId::new("compute_buffer_to_buffer_atomic_cpu_visible_memory", y),

@@ -1,9 +1,12 @@
 #![feature(int_roundings)]
 
-use std::collections::HashSet;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use gpu_compute::{execute_util::{ExecuteUtil, OutputKind, QuadMethod}, vulkan_util::VulkanData};
+use gpu_compute::{
+    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
+    vulkan_util::VulkanData,
+};
 use nalgebra::Vector2;
+use std::collections::HashSet;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut vulkan = VulkanData::init();
@@ -14,16 +17,9 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let mut dedup = HashSet::new();
 
-    for data_size in vulkan.profiling_sizes().iter().copied()
-    {
+    for data_size in vulkan.profiling_sizes().iter().copied() {
         for group_size in [
-            64,
-            256,
-            512,
-            4096,
-            8192,
-            16384,
-            32768,
+            64, 256, 512, 4096, 8192, 16384, 32768,
             65536,
             // 8072,
             // 8072 * 2,

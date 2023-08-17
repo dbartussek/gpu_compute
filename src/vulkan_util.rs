@@ -1,11 +1,11 @@
 use bytemuck::{Pod, Zeroable};
+use itertools::Itertools;
 use nalgebra::Vector2;
 use smallvec::smallvec;
 use std::{
     collections::{hash_map::Entry, HashMap},
     sync::Arc,
 };
-use itertools::Itertools;
 use vulkano::{
     buffer::{Buffer, BufferContents, BufferCreateInfo, BufferUsage, Subbuffer},
     command_buffer::{
@@ -179,9 +179,18 @@ impl VulkanData {
 
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
-        let max_size = physical_device.properties().max_image_dimension2_d.min(physical_device.properties().max_viewport_dimensions[0]);
-        println!("Maximum render size: {:?}", physical_device.properties().max_viewport_dimensions);
-        println!("Maximum 2d image size: {}", physical_device.properties().max_image_dimension2_d);
+        let max_size = physical_device
+            .properties()
+            .max_image_dimension2_d
+            .min(physical_device.properties().max_viewport_dimensions[0]);
+        println!(
+            "Maximum render size: {:?}",
+            physical_device.properties().max_viewport_dimensions
+        );
+        println!(
+            "Maximum 2d image size: {}",
+            physical_device.properties().max_image_dimension2_d
+        );
         println!("Maximum overall size: {}", max_size);
 
         Self {

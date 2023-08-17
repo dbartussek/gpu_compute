@@ -40,20 +40,12 @@ fn main() {
 
     for y in (2..input.height()).step_by(2) {
         for x in 0..output.width() {
-            output.put_pixel(
-                x,
-                (y * (TILE_SIZE + 1)) - 1,
-                Rgb([0; 3]),
-            );
+            output.put_pixel(x, (y * (TILE_SIZE + 1)) - 1, Rgb([0; 3]));
         }
     }
     for x in (2..input.width()).step_by(2) {
         for y in 0..output.height() {
-            output.put_pixel(
-                (x * (TILE_SIZE + 1)) - 1,
-                y,
-                Rgb([0; 3]),
-            );
+            output.put_pixel((x * (TILE_SIZE + 1)) - 1, y, Rgb([0; 3]));
         }
     }
 
