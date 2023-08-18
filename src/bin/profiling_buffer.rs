@@ -2,11 +2,11 @@
 
 use clap::Parser;
 use gpu_compute::{
+    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
-use std::{sync::Arc, time::Duration};
-use std::io::stdin;
+use std::{io::stdin, sync::Arc, time::Duration};
 use vulkano::{
     image::ImageUsage,
     swapchain::{acquire_next_image, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
@@ -17,7 +17,6 @@ use winit::{
     event_loop::EventLoop,
     window::Window,
 };
-use gpu_compute::execute_util::{ExecuteUtil, OutputKind, QuadMethod};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]

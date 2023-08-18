@@ -7,6 +7,7 @@ use gpu_compute::{
 };
 use nalgebra::Vector2;
 use std::{sync::Arc, time::Duration};
+use std::io::stdin;
 use vulkano::{
     image::ImageUsage,
     swapchain::{acquire_next_image, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
@@ -23,10 +24,31 @@ use winit::{
 struct Args {
     #[arg(short, long, default_value_t = false)]
     separate_read_buffer: bool,
+
+    #[arg(short, long, default_value_t = false)]
+    run_once: bool,
+
+    #[arg(short, long)]
+    invocation_size: u32,
+    #[arg(short, long)]
+    work_size: u32,
 }
 
 fn main() {
-    let args = Args::parse();
+    let hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |p| {
+        hook(p);
+        std::fs::write("exit.txt", format!("Panic {:#?}", p)).unwrap();
+        let _ = stdin().read_line(&mut Default::default());
+    }));
+
+    let args = Args::try_parse();
+    println!("Args: {:#?}", args);
+    if args.is_err() {
+        let _ = stdin().read_line(&mut Default::default());
+    }
+    let args = args.unwrap();
+
 
     let mut vulkan = VulkanData::init();
 
@@ -47,7 +69,7 @@ fn main() {
     )
     .unwrap();
 
-    let data_size = Vector2::<u32>::new(256 * 32, 100_000_000u32.div_ceil(32 * 256));
+    let data_size = Vector2::<u32>::new(args.invocation_size, args.work_size.div_ceil(args.invocation_size));
 
     let shader = compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
     let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
@@ -91,7 +113,11 @@ fn main() {
                 .unwrap();
             future.wait(None).unwrap();
 
-            std::thread::sleep(Duration::from_millis(10));
+            if args.run_once {
+                control.set_exit();
+            } else {
+                std::thread::sleep(Duration::from_millis(10));
+            }
         },
         Event::RedrawRequested(_) => {},
         Event::RedrawEventsCleared => {},
