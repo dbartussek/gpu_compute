@@ -62,6 +62,9 @@ harness = false
 [[bench]]
 name = "cpu_perf"
 harness = false
+[[bench]]
+name = "final_accumulation"
+harness = false
 
 [[bench]]
 name = "opencl"

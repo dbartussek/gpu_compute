@@ -1,0 +1,12 @@
+Panic PanicInfo {
+    payload: Any { .. },
+    message: Some(
+        explicit panic,
+    ),
+    location: Location {
+        file: "C:\\Users\\Dario\\git\\gpu_compute\\src\\execute_util_compute.rs",
+        line: 280,
+        col: 9,
+    },
+    can_unwind: true,
+}

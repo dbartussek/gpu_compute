@@ -2,12 +2,11 @@
 
 use clap::Parser;
 use gpu_compute::{
-    execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
+    execute_util_compute::{ComputeExecuteUtil, ComputeParameters, OutputModification},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
-use std::{sync::Arc, time::Duration};
-use std::io::stdin;
+use std::{io::stdin, sync::Arc, time::Duration};
 use vulkano::{
     image::ImageUsage,
     swapchain::{acquire_next_image, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo},
@@ -32,6 +31,9 @@ struct Args {
     invocation_size: u32,
     #[arg(short, long)]
     work_size: u32,
+
+    #[arg(short, long, default_value_t = false)]
+    accumulate_in_subgroup: bool,
 }
 
 fn main() {
@@ -69,9 +71,16 @@ fn main() {
     )
     .unwrap();
 
-    let data_size = Vector2::<u32>::new(args.invocation_size, args.work_size.div_ceil(args.invocation_size));
+    let data_size = Vector2::<u32>::new(
+        args.invocation_size,
+        args.work_size.div_ceil(args.invocation_size),
+    );
 
-    let shader = compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
+    let shader = if args.accumulate_in_subgroup {
+        compute_none_groupbuffer_loop::load(vulkan.device.clone()).unwrap()
+    } else {
+        compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap()
+    };
     let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
         &mut vulkan,
         data_size,
@@ -81,6 +90,11 @@ fn main() {
             TEXTURE_SIZE_Y: 1,
         },
         ComputeParameters {
+            output: if args.accumulate_in_subgroup {
+                OutputModification::OnePerSubgroup
+            } else {
+                Default::default()
+            },
             ..ComputeParameters::default()
         },
         |a, b| a + b,
@@ -131,5 +145,15 @@ mod compute_none_sbuffer_loop {
         path: "shaders/instances/gpu_sum/buffer_none_sbuffer_loop.glsl",
         include: ["shaders/pluggable"],
         define: [("COMPUTE_SHADER", "1")],
+    }
+}
+
+mod compute_none_groupbuffer_loop {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "shaders/instances/gpu_sum/buffer_none_groupbuffer_loop.glsl",
+        include: ["shaders/pluggable"],
+        define: [("COMPUTE_SHADER", "1")],
+        spirv_version: "1.3",
     }
 }

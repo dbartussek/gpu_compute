@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use gpu_compute::{
     execute_util::{ExecuteUtil, OutputKind, QuadMethod},
-    execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
+    execute_util_compute::{ComputeExecuteUtil, ComputeParameters, OutputModification},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
@@ -209,6 +209,31 @@ fn criterion_benchmark(c: &mut Criterion) {
                 });
             },
         );
+        g.bench_with_input(
+            BenchmarkId::new("compute_buffer_to_buffer_subgroup_cpu_visible_memory", y),
+            &y,
+            |b, _| {
+                let shader = compute_none_groupbuffer_loop::load(vulkan.device.clone()).unwrap();
+                let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
+                    &mut vulkan,
+                    data_size,
+                    &shader,
+                    compute_none_groupbuffer_loop::SpecializationConstants {
+                        TEXTURE_SIZE_X: data_size.x as _,
+                        TEXTURE_SIZE_Y: 1,
+                    },
+                    ComputeParameters {
+                        output: OutputModification::OnePerSubgroup,
+                        ..Default::default()
+                    },
+                    |a, b| a + b,
+                );
+
+                b.iter(|| {
+                    execute.run(&mut vulkan, false);
+                });
+            },
+        );
 
 
         if data_size.y % 4 == 0 {
@@ -289,7 +314,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                         TEXTURE_SIZE_Y: 1,
                     },
                     ComputeParameters {
-                        single_output_value: true,
+                        output: OutputModification::SingleValue,
                         clear_buffer: true,
                         ..ComputeParameters::default()
                     },
@@ -365,5 +390,15 @@ mod attach_none_sampled_loop {
         ty: "fragment",
         path: "shaders/instances/gpu_sum/attach_none_sampled2D_loop.glsl",
         include: ["shaders/pluggable"],
+    }
+}
+
+mod compute_none_groupbuffer_loop {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "shaders/instances/gpu_sum/buffer_none_groupbuffer_loop.glsl",
+        include: ["shaders/pluggable"],
+        define: [("COMPUTE_SHADER", "1")],
+        spirv_version: "1.3",
     }
 }

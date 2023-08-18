@@ -34,12 +34,25 @@ pub struct ComputeExecuteUtil<Type> {
 
 #[derive(Derivative)]
 #[derivative(Default, Clone)]
+#[derive(Copy)]
+pub enum OutputModification {
+    #[derivative(Default)]
+    OneForOne,
+
+    SingleValue,
+
+    OnePerSubgroup,
+}
+
+#[derive(Derivative)]
+#[derivative(Default, Clone)]
 pub struct ComputeParameters {
     #[derivative(Default(value = "1"))]
     pub vectorization_factor: u32,
 
-    pub single_output_value: bool,
     pub clear_buffer: bool,
+
+    pub output: OutputModification,
 }
 
 impl<Type> ComputeExecuteUtil<Type>
@@ -175,12 +188,17 @@ where
                 },
                 ..Default::default()
             },
-            if !self.parameters.single_output_value {
-                (self.viewport_size.x * self.viewport_size.y * self.parameters.vectorization_factor)
-                    as DeviceSize
-            } else {
-                self.parameters.vectorization_factor as DeviceSize
-            },
+            match self.parameters.output {
+                OutputModification::OneForOne => {
+                    (self.viewport_size.x * self.viewport_size.y) as DeviceSize
+                },
+                OutputModification::SingleValue => 1,
+                OutputModification::OnePerSubgroup => {
+                    ((self.viewport_size.x * self.viewport_size.y) as DeviceSize)
+                        .div_ceil(vulkan.physical_device.properties().subgroup_size.unwrap()
+                            as DeviceSize)
+                },
+            } * (self.parameters.vectorization_factor as DeviceSize),
         )
         .unwrap();
         let read_buffer = if separate_read_buffer {
