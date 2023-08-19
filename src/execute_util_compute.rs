@@ -42,6 +42,10 @@ pub enum OutputModification {
     SingleValue,
 
     OnePerSubgroup,
+
+    /// Make the output buffer be oversized to compare how much the final
+    /// accumulation costs
+    FixedSize(DeviceSize),
 }
 
 #[derive(Derivative)]
@@ -53,6 +57,8 @@ pub struct ComputeParameters {
     pub clear_buffer: bool,
 
     pub output: OutputModification,
+
+    pub skip_cpu_final_accumulation: bool,
 }
 
 impl<Type> ComputeExecuteUtil<Type>
@@ -198,6 +204,9 @@ where
                         .div_ceil(vulkan.physical_device.properties().subgroup_size.unwrap()
                             as DeviceSize)
                 },
+                OutputModification::FixedSize(size) => {
+                    size.max((self.viewport_size.x * self.viewport_size.y) as DeviceSize)
+                },
             } * (self.parameters.vectorization_factor as DeviceSize),
         )
         .unwrap();
@@ -267,15 +276,17 @@ where
 
         // println!("\n\n\n{:x?}\n", &read_buffer.read().unwrap() as &[_]);
 
-        let result = black_box(
-            read_buffer
-                .read()
-                .unwrap()
-                .iter()
-                .copied()
-                .reduce(&self.accumulate)
-                .unwrap(),
-        );
-        assert_eq!(result, self.expected_result);
+        if !self.parameters.skip_cpu_final_accumulation {
+            let result = black_box(
+                read_buffer
+                    .read()
+                    .unwrap()
+                    .iter()
+                    .copied()
+                    .reduce(&self.accumulate)
+                    .unwrap(),
+            );
+            assert_eq!(result, self.expected_result);
+        }
     }
 }

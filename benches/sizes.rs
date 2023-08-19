@@ -3,12 +3,11 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use gpu_compute::{
     execute_util::{ExecuteUtil, OutputKind, QuadMethod},
-    execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
+    execute_util_compute::{ComputeExecuteUtil, ComputeParameters, OutputModification},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
 use std::collections::HashSet;
-use gpu_compute::execute_util_compute::OutputModification;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut vulkan = VulkanData::init();
@@ -97,6 +96,50 @@ fn criterion_benchmark(c: &mut Criterion) {
                                 TEXTURE_SIZE_Y: 1,
                             },
                             ComputeParameters {
+                                ..Default::default()
+                            },
+                            |a, b| a + b,
+                        );
+
+                        b.iter(|| {
+                            execute.run(&mut vulkan, true);
+                        });
+                    },
+                );
+            }
+        }
+    }
+    {
+        let mut g = c.benchmark_group(format!("optimal_accumulate_size_compute_fixed_output_size"));
+        // g.measurement_time(std::time::Duration::from_secs(30));
+        g.sample_size(10);
+
+        let mut dedup = HashSet::new();
+
+        for data_size in vulkan.profiling_sizes().iter().copied() {
+            for group_size in group_sizes {
+                let data_size = data_size.div_ceil(group_size) * group_size;
+
+                if !dedup.insert((group_size, data_size)) {
+                    continue;
+                }
+
+                g.bench_with_input(
+                    BenchmarkId::new(format!("group-{}", group_size), data_size),
+                    &data_size,
+                    |b, data_size| {
+                        let shader =
+                            buffer_none_sbuffer_loop_compute::load(vulkan.device.clone()).unwrap();
+                        let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
+                            &mut vulkan,
+                            Vector2::new(group_size, data_size.div_ceil(group_size)),
+                            &shader,
+                            buffer_none_sbuffer_loop_compute::SpecializationConstants {
+                                TEXTURE_SIZE_X: (group_size as i32) / 1,
+                                TEXTURE_SIZE_Y: 1,
+                            },
+                            ComputeParameters {
+                                output: OutputModification::FixedSize(65536),
                                 ..Default::default()
                             },
                             |a, b| a + b,

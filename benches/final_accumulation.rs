@@ -2,13 +2,13 @@
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use itertools::Itertools;
+use rand::Rng;
+use rand_pcg::Pcg64;
 use std::{
     hint::black_box,
     ops::{Add, AddAssign},
     simd::{u32x16, SimdUint},
 };
-use rand::Rng;
-use rand_pcg::Pcg64;
 
 fn accumulate<T>(i: &[T]) -> T
 where
@@ -26,15 +26,16 @@ where
 fn criterion_benchmark(c: &mut Criterion) {
     let mut g = c.benchmark_group("final_accumulation");
 
-    let sizes = (4..18u32)
-        .into_iter()
-        .map(|v| 1u32 << v)
-        .collect_vec();
+    let sizes = (4..18u32).into_iter().map(|v| 1u32 << v).collect_vec();
     println!("{:?}", sizes);
 
     for size in sizes.clone() {
         const DATA_SIZES: usize = 10000000;
-        let data = black_box(std::iter::repeat_with(|| (1u32..size).into_iter().collect_vec()).take(DATA_SIZES / (size as usize)).collect_vec());
+        let data = black_box(
+            std::iter::repeat_with(|| (1u32..size).into_iter().collect_vec())
+                .take(DATA_SIZES / (size as usize))
+                .collect_vec(),
+        );
 
         g.bench_with_input(BenchmarkId::new("pcg_cost", size), &size, |b, _size| {
             let mut rng = Pcg64::new(42, 0);
