@@ -2,7 +2,7 @@
 
 use clap::Parser;
 use gpu_compute::{
-    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
+    execute_util::{ExecuteParameters, ExecuteUtil, OutputKind, QuadMethod},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
@@ -73,10 +73,12 @@ fn main() {
             TEXTURE_SIZE_X: (data_size.x / args.framebuffer_y) as _,
             TEXTURE_SIZE_Y: args.framebuffer_y as _,
         },
-        OutputKind::Buffer,
-        QuadMethod::two_triangles,
-        args.framebuffer_y,
-        1,
+        ExecuteParameters {
+            output: OutputKind::Buffer,
+            quad_method: QuadMethod::two_triangles,
+            framebuffer_y: args.framebuffer_y,
+            ..Default::default()
+        },
         |a, b| a + b,
     );
 

@@ -2,7 +2,7 @@
 
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use gpu_compute::{
-    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
+    execute_util::{ExecuteParameters, ExecuteUtil, OutputKind, QuadMethod},
     execute_util_compute::{ComputeExecuteUtil, ComputeParameters, OutputModification},
     vulkan_util::VulkanData,
 };
@@ -39,7 +39,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                     BenchmarkId::new(format!("group-{}", group_size), data_size),
                     &data_size,
                     |b, data_size| {
-                        let frame_y = 4;
+                        let framebuffer_y = 4;
 
                         let shader = buffer_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
                         let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
@@ -47,13 +47,15 @@ fn criterion_benchmark(c: &mut Criterion) {
                             Vector2::new(group_size, data_size.div_ceil(group_size)),
                             &shader,
                             buffer_none_sbuffer_loop::SpecializationConstants {
-                                TEXTURE_SIZE_X: (group_size as i32) / frame_y,
-                                TEXTURE_SIZE_Y: frame_y,
+                                TEXTURE_SIZE_X: (group_size as i32) / framebuffer_y,
+                                TEXTURE_SIZE_Y: framebuffer_y,
                             },
-                            OutputKind::Buffer,
-                            *method,
-                            frame_y as _,
-                            1,
+                            ExecuteParameters {
+                                output: OutputKind::Buffer,
+                                quad_method: *method,
+                                framebuffer_y: framebuffer_y as _,
+                                ..Default::default()
+                            },
                             |a, b| a + b,
                         );
 

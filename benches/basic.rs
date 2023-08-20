@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use gpu_compute::{
     an_external_function, do_virtual_call,
-    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
+    execute_util::{ExecuteParameters, ExecuteUtil},
     execute_util_compute::{ComputeExecuteUtil, ComputeParameters},
     vulkan_util::VulkanData,
 };
@@ -52,9 +52,9 @@ fn criterion_benchmark(c: &mut Criterion) {
                 TEXTURE_SIZE_X: 1,
                 TEXTURE_SIZE_Y: 1,
             },
-            OutputKind::Attachment,
-            QuadMethod::large_triangle,
-            1,
+            ExecuteParameters {
+                ..Default::default()
+            },
             |a, b| a + b,
         );
 

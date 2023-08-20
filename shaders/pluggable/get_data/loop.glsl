@@ -15,7 +15,7 @@ GetData get_data(int x, int y) {
     DATA_TYPE acc = get_identity();
 
     for (int z = 0; z < to_z; z++) {
-        DATA_TYPE data = get_data_raw(x, y, z, TEXTURE_SIZE_X, TEXTURE_SIZE_Y, to_z);
+        DATA_TYPE data = get_data_raw(x, y, z, TEXTURE_SIZE_X, TEXTURE_SIZE_Y);
 
 #ifndef UNCONDITIONAL
         if (condition(x, y, z, data)) {

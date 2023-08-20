@@ -8,7 +8,7 @@ layout(set = 0, binding = 0, scalar) readonly buffer b {
 
 INPUT_DATA_TYPE get_data_raw(
         int x, int y, int z,
-        int size_x, int size_y, int size_z
+        int size_x, int size_y
         ) {
     int index = x + (y * size_x) + (z * size_x * size_y);
     INPUT_DATA_TYPE data = values[index];

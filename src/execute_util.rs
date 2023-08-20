@@ -1,5 +1,6 @@
 use crate::vulkan_util::{MVertex, RenderPassKey, VulkanData};
 use bytemuck::Pod;
+use derivative::Derivative;
 use itertools::Itertools;
 use nalgebra::Vector2;
 use num::{NumCast, Zero};
@@ -24,7 +25,7 @@ use vulkano::{
     memory::allocator::{AllocationCreateInfo, MemoryUsage},
     pipeline::{
         graphics::{
-            color_blend::ColorBlendState,
+            color_blend::{AttachmentBlend, BlendFactor, BlendOp, ColorBlendState},
             input_assembly::{InputAssemblyState, PrimitiveTopology},
             rasterization::{PolygonMode, RasterizationState},
             vertex_input::Vertex,
@@ -39,24 +40,6 @@ use vulkano::{
     DeviceSize,
 };
 
-pub struct ExecuteUtil<Type> {
-    viewport_size: Vector2<u32>,
-    vectorization_factor: u32,
-
-    render_pass: Arc<RenderPass>,
-    pipeline: Arc<GraphicsPipeline>,
-    set: Arc<PersistentDescriptorSet>,
-
-    instance_id: u32,
-
-    expected_result: Type,
-
-    output: OutputKind,
-    method: QuadMethod,
-
-    accumulate: Box<dyn Fn(Type, Type) -> Type>,
-}
-
 pub fn generate_data<Type>(length: u32) -> impl ExactSizeIterator<Item = Type>
 where
     Type: NumCast,
@@ -68,27 +51,106 @@ where
         .map(|n| Type::from(n).unwrap())
 }
 
-#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Debug)]
+
+pub struct ExecuteUtil<Type> {
+    viewport_size: Vector2<u32>,
+    parameters: ExecuteParameters,
+
+    render_pass: Arc<RenderPass>,
+    pipeline: Arc<GraphicsPipeline>,
+    set: Arc<PersistentDescriptorSet>,
+
+    instance_id: u32,
+
+    expected_result: Type,
+
+    accumulate: Box<dyn Fn(Type, Type) -> Type>,
+}
+
+
+#[derive(Derivative)]
+#[derivative(Default, Clone)]
+pub struct ExecuteParameters {
+    #[derivative(Default(value = "1"))]
+    pub vectorization_factor: u32,
+
+    #[derivative(Default(value = "1"))]
+    pub framebuffer_y: u32,
+
+    #[derivative(Default(value = "ClearValue::Uint([0; 4])"))]
+    pub clear_value: ClearValue,
+
+    pub output: OutputKind,
+    pub quad_method: QuadMethod,
+
+    pub blend: Option<BlendMethod>,
+    pub use_instances_and_blend: bool,
+}
+
+
+#[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
+#[allow(non_camel_case_types)]
+pub enum BlendMethod {
+    Add,
+    Min,
+}
+
+impl BlendMethod {
+    pub fn to_vulkano(self) -> AttachmentBlend {
+        let mut base = AttachmentBlend {
+            color_op: BlendOp::ReverseSubtract,
+            color_source: BlendFactor::One,
+            color_destination: BlendFactor::One,
+            alpha_op: BlendOp::ReverseSubtract,
+            alpha_source: BlendFactor::One,
+            alpha_destination: BlendFactor::One,
+        };
+
+        match self {
+            BlendMethod::Add => {
+                base.color_op = BlendOp::Add;
+                base.alpha_op = BlendOp::Add;
+            },
+            BlendMethod::Min => {
+                base.color_op = BlendOp::Min;
+                base.alpha_op = BlendOp::Min;
+            },
+        }
+
+        base
+    }
+}
+
+#[derive(Derivative)]
+#[derivative(Default)]
+#[derive(Copy, Clone, Debug)]
 pub enum OutputKind {
-    Attachment,
+    RenderAttachment(Format),
+    #[derivative(Default)]
     Buffer,
 }
 
 impl OutputKind {
+    #[allow(non_upper_case_globals)]
+    pub const Attachment: Self = Self::RenderAttachment(Format::R32_UINT);
+
     fn to_render_pass_key(self) -> RenderPassKey {
         RenderPassKey {
             format: match self {
-                OutputKind::Attachment => Some(Format::R32_UINT),
+                OutputKind::RenderAttachment(format) => Some(format),
                 OutputKind::Buffer => None,
             },
         }
     }
 }
 
+#[derive(Derivative)]
+#[derivative(Default)]
 #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Debug, Hash)]
 #[allow(non_camel_case_types)]
 pub enum QuadMethod {
     two_triangles,
+    #[derivative(Default)]
     large_triangle,
     #[cfg(feature = "fill_rectangle")]
     fill_rectangle,
@@ -121,8 +183,7 @@ where
         vulkan: &mut VulkanData,
         fs: &ShaderModule,
         sc: SC,
-        output: OutputKind,
-        method: QuadMethod,
+        params: ExecuteParameters,
 
         accumulate: Acc,
 
@@ -136,45 +197,44 @@ where
             &Arc<GraphicsPipeline>,
         ) -> (Vector2<u32>, Arc<PersistentDescriptorSet>, Type),
     {
-        let render_pass = vulkan.create_render_pass(output.to_render_pass_key());
+        let render_pass = vulkan.create_render_pass(params.output.to_render_pass_key());
 
         let vert = vs::load(vulkan.device.clone()).unwrap();
 
         let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
-        let pipeline = GraphicsPipeline::start()
+        let mut pipeline = GraphicsPipeline::start()
             .vertex_input_state(MVertex::per_vertex())
             .vertex_shader(
                 vert.entry_point("main").unwrap(),
                 vs::SpecializationConstants {
-                    DATA_SCALE: if method == QuadMethod::large_triangle {
+                    DATA_SCALE: if params.quad_method == QuadMethod::large_triangle {
                         2
                     } else {
                         1
                     },
                 },
             )
-            .rasterization_state(RasterizationState::new().polygon_mode(
-                {
-                    #[cfg(feature = "fill_rectangle")]
-                    if method == QuadMethod::fill_rectangle {
-                        PolygonMode::FillRectangle
-                    } else {
-                        PolygonMode::Fill
-                    }
-                    #[cfg(not(feature = "fill_rectangle"))]
+            .rasterization_state(RasterizationState::new().polygon_mode({
+                #[cfg(feature = "fill_rectangle")]
+                if params.quad_method == QuadMethod::fill_rectangle {
+                    PolygonMode::FillRectangle
+                } else {
                     PolygonMode::Fill
-                },
-            ))
+                }
+                #[cfg(not(feature = "fill_rectangle"))]
+                PolygonMode::Fill
+            }))
             .input_assembly_state(
                 InputAssemblyState::new().topology(PrimitiveTopology::TriangleStrip),
             )
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .fragment_shader(fs.entry_point("main").unwrap(), sc)
-            .color_blend_state(
-                // TODO make this generic?
-                ColorBlendState::new(subpass.num_color_attachments())
-                    // .blend(AttachmentBlend::additive()),
-            )
+            .fragment_shader(fs.entry_point("main").unwrap(), sc);
+        if let Some(blend) = params.blend {
+            pipeline = pipeline.color_blend_state(
+                ColorBlendState::new(subpass.num_color_attachments()).blend(blend.to_vulkano()),
+            );
+        }
+        let pipeline = pipeline
             .render_pass(subpass)
             .build(vulkan.device.clone())
             .unwrap();
@@ -183,14 +243,12 @@ where
 
         Self {
             viewport_size,
-            vectorization_factor: 1,
             render_pass,
             pipeline,
             set,
             instance_id: 1,
             expected_result,
-            output,
-            method,
+            parameters: params,
             accumulate: Box::new(accumulate),
         }
     }
@@ -201,11 +259,7 @@ where
         data_size: Vector2<u32>,
         fs: &ShaderModule,
         sc: SC,
-        output: OutputKind,
-        method: QuadMethod,
-
-        framebuffer_y: u32,
-        vectorization_factor: u32,
+        params: ExecuteParameters,
 
         accumulate: Acc,
     ) -> Self
@@ -213,7 +267,7 @@ where
         SC: SpecializationConstants,
         Acc: 'static + Fn(Type, Type) -> Type,
     {
-        assert_eq!(data_size.x % framebuffer_y, 0);
+        assert_eq!(data_size.x % params.framebuffer_y, 0);
 
         let total = data_size.x * data_size.y;
         let generated_data = generate_data(total).collect_vec();
@@ -223,8 +277,7 @@ where
             vulkan,
             fs,
             sc,
-            output,
-            method,
+            params.clone(),
             accumulate,
             move |vulkan, pipeline| {
                 let mut command_buffer = vulkan.create_command_buffer();
@@ -249,7 +302,7 @@ where
                 .unwrap();
 
                 (
-                    Vector2::new(data_size.x / framebuffer_y, framebuffer_y),
+                    Vector2::new(data_size.x / params.framebuffer_y, params.framebuffer_y),
                     set,
                     expected,
                 )
@@ -257,12 +310,11 @@ where
         );
 
         assert_eq!(
-            data_size.y % vectorization_factor,
+            data_size.y % params.vectorization_factor,
             0,
             "Dimension Y must be a multiple of the vectorization factor"
         );
-        executor.instance_id = data_size.y / vectorization_factor;
-        executor.vectorization_factor = vectorization_factor;
+        executor.instance_id = data_size.y / params.vectorization_factor;
 
         executor
     }
@@ -273,10 +325,7 @@ where
         data_size: Vector2<u32>,
         fs: &ShaderModule,
         sc: SC,
-        output: OutputKind,
-        method: QuadMethod,
-
-        framebuffer_y: u32,
+        params: ExecuteParameters,
 
         accumulate: Acc,
     ) -> Self
@@ -291,8 +340,7 @@ where
             vulkan,
             fs,
             sc,
-            output,
-            method,
+            params.clone(),
             accumulate,
             |vulkan, pipeline| {
                 let mut command_buffer = vulkan.create_command_buffer();
@@ -338,7 +386,7 @@ where
                 .unwrap();
 
                 (
-                    Vector2::new(data_size.x / framebuffer_y, framebuffer_y),
+                    Vector2::new(data_size.x / params.framebuffer_y, params.framebuffer_y),
                     set,
                     expected,
                 )
@@ -351,10 +399,10 @@ where
     }
 
     #[inline(always)]
-    fn run_for_attachment(&mut self, vulkan: &mut VulkanData) {
+    fn run_for_attachment(&mut self, vulkan: &mut VulkanData, format: Format) {
         let mut command_buffer = vulkan.create_command_buffer();
 
-        let target = vulkan.create_target_image(self.viewport_size, Format::R32_UINT);
+        let target = vulkan.create_target_image(self.viewport_size, format);
         let framebuffer = Framebuffer::new(
             self.render_pass.clone(),
             FramebufferCreateInfo {
@@ -367,7 +415,7 @@ where
         command_buffer
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values: vec![Some(ClearValue::Uint([0; 4]))],
+                    clear_values: vec![Some(self.parameters.clear_value)],
                     ..RenderPassBeginInfo::framebuffer(framebuffer)
                 },
                 SubpassContents::Inline,
@@ -388,7 +436,12 @@ where
                 self.set.clone(),
             )
             .bind_vertex_buffers(0, vulkan.vertex_buffer())
-            .draw(if self.method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3}, 1, 0, self.instance_id)
+            .draw(
+                if self.parameters.quad_method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3},
+                if self.parameters.use_instances_and_blend {self.instance_id} else {1},
+                0,
+                if self.parameters.use_instances_and_blend {0} else {self.instance_id}
+            )
             .unwrap()
 
             // End rendering
@@ -439,7 +492,8 @@ where
                 },
                 ..Default::default()
             },
-            (self.viewport_size.x * self.viewport_size.y * self.vectorization_factor) as DeviceSize,
+            (self.viewport_size.x * self.viewport_size.y * self.parameters.vectorization_factor)
+                as DeviceSize,
         )
         .unwrap();
         let read_buffer = if separate_read_buffer {
@@ -503,7 +557,7 @@ where
                 target_set,
             )
             .bind_vertex_buffers(0, vulkan.vertex_buffer())
-            .draw(if self.method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3}, 1, 0, self.instance_id)
+            .draw(if self.parameters.quad_method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3}, 1, 0, self.instance_id)
             .unwrap()
 
             // End rendering
@@ -540,8 +594,8 @@ where
 
     #[inline(always)]
     pub fn run(&mut self, vulkan: &mut VulkanData, separate_read_buffer: bool) {
-        match self.output {
-            OutputKind::Attachment => self.run_for_attachment(vulkan),
+        match self.parameters.output {
+            OutputKind::RenderAttachment(format) => self.run_for_attachment(vulkan, format),
             OutputKind::Buffer => self.run_for_buffer(vulkan, separate_read_buffer),
         }
     }

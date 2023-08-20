@@ -1,7 +1,7 @@
 #![feature(int_roundings)]
 
 use gpu_compute::{
-    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
+    execute_util::{ExecuteParameters, ExecuteUtil, OutputKind, QuadMethod},
     vulkan_util::VulkanData,
 };
 use nalgebra::Vector2;
@@ -49,9 +49,12 @@ fn main() {
             TEXTURE_SIZE_X: (data_size.x / work_size_y) as i32,
             TEXTURE_SIZE_Y: 1,
         },
-        OutputKind::Attachment,
-        QuadMethod::large_triangle,
-        work_size_y,
+        ExecuteParameters {
+            output: OutputKind::Attachment,
+            quad_method: QuadMethod::large_triangle,
+            framebuffer_y: work_size_y,
+            ..Default::default()
+        },
         |a, b| a + b,
     );
 

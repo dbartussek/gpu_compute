@@ -108,6 +108,7 @@ impl VulkanData {
             })
             .unwrap();
 
+        dbg!(physical_device.properties().device_type);
         dbg!(physical_device.supported_extensions().nv_fill_rectangle);
 
         let queues = if queue_family_index != queue_compute {

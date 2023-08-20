@@ -1,6 +1,6 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use gpu_compute::{
-    execute_util::{ExecuteUtil, OutputKind, QuadMethod},
+    execute_util::{ExecuteParameters, ExecuteUtil, OutputKind, QuadMethod},
     execute_util_compute::{ComputeExecuteUtil, ComputeParameters, OutputModification},
     vulkan_util::VulkanData,
 };
@@ -41,10 +41,12 @@ fn criterion_benchmark(c: &mut Criterion) {
                                 TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
                                 TEXTURE_SIZE_Y: framebuffer_y as _,
                             },
-                            OutputKind::Attachment,
-                            method,
-                            framebuffer_y,
-                            1,
+                            ExecuteParameters {
+                                output: OutputKind::Attachment,
+                                quad_method: method,
+                                framebuffer_y,
+                                ..Default::default()
+                            },
                             |a, b| a + b,
                         );
 
@@ -69,9 +71,12 @@ fn criterion_benchmark(c: &mut Criterion) {
                                     TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
                                     TEXTURE_SIZE_Y: data_size.y as _,
                                 },
-                                OutputKind::Attachment,
-                                method,
-                                framebuffer_y,
+                                ExecuteParameters {
+                                    output: OutputKind::Attachment,
+                                    quad_method: method,
+                                    framebuffer_y,
+                                    ..Default::default()
+                                },
                                 |a, b| a + b,
                             );
 
@@ -95,10 +100,12 @@ fn criterion_benchmark(c: &mut Criterion) {
                                 TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
                                 TEXTURE_SIZE_Y: framebuffer_y as _,
                             },
-                            OutputKind::Buffer,
-                            method,
-                            framebuffer_y,
-                            1,
+                            ExecuteParameters {
+                                output: OutputKind::Buffer,
+                                quad_method: method,
+                                framebuffer_y,
+                                ..Default::default()
+                            },
                             |a, b| a + b,
                         );
 
@@ -120,10 +127,12 @@ fn criterion_benchmark(c: &mut Criterion) {
                                 TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
                                 TEXTURE_SIZE_Y: framebuffer_y as _,
                             },
-                            OutputKind::Buffer,
-                            method,
-                            framebuffer_y,
-                            1,
+                            ExecuteParameters {
+                                output: OutputKind::Buffer,
+                                quad_method: method,
+                                framebuffer_y,
+                                ..Default::default()
+                            },
                             |a, b| a + b,
                         );
 
@@ -149,10 +158,13 @@ fn criterion_benchmark(c: &mut Criterion) {
                                     TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
                                     TEXTURE_SIZE_Y: framebuffer_y as _,
                                 },
-                                OutputKind::Buffer,
-                                method,
-                                framebuffer_y,
-                                4,
+                                ExecuteParameters {
+                                    output: OutputKind::Buffer,
+                                    quad_method: method,
+                                    framebuffer_y,
+                                    vectorization_factor: 4,
+                                    ..Default::default()
+                                },
                                 |a, b| a + b,
                             );
 

@@ -1,6 +1,6 @@
 use gpu_compute::vulkan_util::VulkanData;
 use vulkano::{
-    format::Format,
+    format::{Format, FormatFeatures},
     image::{ImageFormatInfo, ImageTiling, ImageUsage},
 };
 
@@ -8,6 +8,20 @@ fn main() {
     let vulkan = VulkanData::init();
 
     let formats = [
+        // u8
+        vec![
+            Format::R8_UINT,
+            Format::R8G8_UINT,
+            Format::R8G8B8_UINT,
+            Format::R8G8B8A8_UINT,
+        ],
+        // i8
+        vec![
+            Format::R8_SINT,
+            Format::R8G8_SINT,
+            Format::R8G8B8_SINT,
+            Format::R8G8B8A8_SINT,
+        ],
         // i32
         vec![
             Format::R32_SINT,
@@ -65,7 +79,33 @@ fn main() {
                         })
                         .unwrap()
                     {
-                        Some(_) => println!("{id} - X"),
+                        Some(_) => {
+                            let details = match vulkan
+                                .physical_device
+                                .format_properties(format)
+                                .ok()
+                                .filter(|_| usage == ImageUsage::COLOR_ATTACHMENT)
+                            {
+                                None => format!(""),
+                                Some(props) => format!(
+                                    " {}",
+                                    if match tiling {
+                                        ImageTiling::Linear => props
+                                            .linear_tiling_features
+                                            .contains(FormatFeatures::COLOR_ATTACHMENT_BLEND),
+                                        ImageTiling::Optimal => props
+                                            .optimal_tiling_features
+                                            .contains(FormatFeatures::COLOR_ATTACHMENT_BLEND),
+                                        _ => unreachable!(),
+                                    } {
+                                        "can blend"
+                                    } else {
+                                        ""
+                                    }
+                                ),
+                            };
+                            println!("{id} - X{}", details);
+                        },
                         None => println!("{id} - _"),
                     }
                 }
