@@ -1,5 +1,4 @@
-#include <cstdint>
-#include <algorithm>
+#include <stdint.h>
 
 #include <cuda_runtime.h>
 
@@ -91,7 +90,7 @@ extern  "C" {
         cudaMallocManaged(&output, sizeof(uint32_t));
         *output = 0;
 
-        subgroup_size = std::min(subgroup_size, (size_t) 256);
+        subgroup_size = min(subgroup_size, (size_t) 256);
 
         kernelSumReduce<<<U32_DATA_SIZE/subgroup_size, subgroup_size>>>(U32_DATA, output);
         cudaDeviceSynchronize();
