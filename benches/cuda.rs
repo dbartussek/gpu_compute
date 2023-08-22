@@ -1,10 +1,7 @@
 use criterion::{
     criterion_group, criterion_main, measurement::WallTime, BenchmarkGroup, BenchmarkId, Criterion,
 };
-use gpu_compute::{
-    execute_util::generate_data,
-    vulkan_util::VulkanData,
-};
+use gpu_compute::{execute_util::generate_data, vulkan_util::VulkanData};
 use itertools::Itertools;
 use std::time::Duration;
 
@@ -21,7 +18,11 @@ pub fn do_cuda_bench(
 
         b.iter(|| {
             let result_sum = unsafe {
-                gpu_compute::cuda_accumulate_u32_sum(kernel_size as usize, kernel_size.min(256) as usize, 0)
+                gpu_compute::cuda_accumulate_u32_sum(
+                    kernel_size as usize,
+                    kernel_size.min(256) as usize,
+                    0,
+                )
             };
             // assert_eq!(result_sum, expected);
             result_sum
@@ -32,9 +33,9 @@ pub fn do_cuda_bench(
 
 #[cfg(feature = "cuda")]
 fn criterion_benchmark(c: &mut Criterion) {
-    let vulkan = VulkanData::init();
-
-    let sizes = vulkan.profiling_sizes().clone();
+    let sizes = [
+        0x8000, 0x10000, 0x40000, 0x100000, 0x400000, 0x1000000, 0x4000000, 0x10000000, 0x20000000,
+    ];
     println!("{:X?}", sizes);
 
     {

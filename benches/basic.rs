@@ -86,7 +86,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     #[cfg(feature = "cuda")]
     g.bench_function("cuda_empty_kernel", |b| {
-        b.iter(|| unsafe {gpu_compute::cuda_empty_kernel()})
+        b.iter(|| unsafe { gpu_compute::cuda_empty_kernel() })
     });
 
     drop(g);
