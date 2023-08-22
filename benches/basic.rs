@@ -14,7 +14,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let mut g = c.benchmark_group("call_times");
     g.measurement_time(Duration::from_secs(30));
-    g.sample_size(1000);
+    // g.sample_size(1000);
 
     g.bench_function("an_external_function", |b| {
         b.iter(|| unsafe { an_external_function() })
@@ -43,12 +43,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     });
 
     g.bench_function("run_shader", |b| {
-        let shader = attach_none_sampled_loop::load(vulkan.device.clone()).unwrap();
-        let mut execute = ExecuteUtil::<u32>::setup_2d_sampler(
+        let shader = none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
+        let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
             &mut vulkan,
             Vector2::new(1, 1),
             &shader,
-            attach_none_sampled_loop::SpecializationConstants {
+            none_sbuffer_loop::SpecializationConstants {
                 TEXTURE_SIZE_X: 1,
                 TEXTURE_SIZE_Y: 1,
             },
@@ -84,6 +84,11 @@ fn criterion_benchmark(c: &mut Criterion) {
         });
     });
 
+    #[cfg(feature = "cuda")]
+    g.bench_function("cuda_empty_kernel", |b| {
+        b.iter(|| unsafe {gpu_compute::cuda_empty_kernel()})
+    });
+
     drop(g);
 }
 
@@ -91,10 +96,10 @@ criterion_group!(benches, criterion_benchmark);
 criterion_main!(benches);
 
 
-mod attach_none_sampled_loop {
+mod none_sbuffer_loop {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "shaders/instances/gpu_sum/attach_none_sampled2D_loop.glsl",
+        path: "shaders/instances/gpu_sum/buffer_none_sbuffer_loop.glsl",
         include: ["shaders/pluggable"],
     }
 }

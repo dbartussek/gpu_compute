@@ -98,7 +98,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     {
         let mut g = c.benchmark_group("call_times");
         g.measurement_time(Duration::from_secs(30));
-        g.sample_size(1000);
+        // g.sample_size(1000);
 
         do_cl_bench::<u32, _>(
             &mut g,

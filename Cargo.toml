@@ -11,6 +11,7 @@ qutex = { git = "https://github.com/dbartussek/qutex.git" }
 
 [features]
 fill_rectangle = []
+cuda = []
 
 [dependencies]
 byte-unit = "4.0.19"
@@ -68,4 +69,7 @@ harness = false
 
 [[bench]]
 name = "opencl"
+harness = false
+[[bench]]
+name = "cuda"
 harness = false
