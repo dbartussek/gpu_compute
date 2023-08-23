@@ -54,6 +54,7 @@ uint32_t* U32_DATA = nullptr;
 size_t U32_DATA_SIZE = 0;
 
 uint32_t* U32_OUTPUT_BUFFER = nullptr;
+uint32_t* U32_OUTPUT_BUFFER_CPU = nullptr;
 size_t U32_OUTPUT_BUFFER_SIZE = 0;
 
 
@@ -73,29 +74,26 @@ extern  "C" {
     void cuda_accumulate_u32_set_data(uint32_t* data, size_t count) {
         cuda_accumulate_u32_free_data();
 
-        cudaMallocManaged(&U32_DATA, sizeof(uint32_t) * count);
+        cudaMalloc(&U32_DATA, sizeof(uint32_t) * count);
         U32_DATA_SIZE = count;
 
-        memcpy(U32_DATA, data, sizeof(uint32_t) * count);
+        cudaMemcpy(U32_DATA, data, sizeof(uint32_t) * count, cudaMemcpyHostToDevice);
     }
 
 
-    uint32_t cuda_accumulate_u32_sum__(
-            size_t total_threads,
-            size_t subgroup_size,
-
-            size_t second_accumulate_on_gpu
-    ) {
+    uint32_t cuda_accumulate_u32_sum_subgroup() {
         uint32_t* output;
-        cudaMallocManaged(&output, sizeof(uint32_t));
-        *output = 0;
+        cudaMalloc(&output, sizeof(uint32_t));
+        cudaMemset(output, 0, sizeof(uint32_t));
 
-        subgroup_size = min(subgroup_size, (size_t) 256);
+        size_t subgroup_size = min(U32_DATA_SIZE, (size_t) 256);
 
         kernelSumReduce<<<U32_DATA_SIZE/subgroup_size, subgroup_size>>>(U32_DATA, output);
         cudaDeviceSynchronize();
 
-        uint32_t result = *output;
+        uint32_t result;
+        cudaMemcpy(&result, output, sizeof(uint32_t), cudaMemcpyDeviceToHost);
+
         cudaFree(output);
         return result;
     }
@@ -109,9 +107,11 @@ extern  "C" {
         if (U32_OUTPUT_BUFFER_SIZE != total_threads) {
             if (U32_OUTPUT_BUFFER) {
                 cudaFree(U32_OUTPUT_BUFFER);
+                free(U32_OUTPUT_BUFFER_CPU);
             }
 
-            cudaMallocManaged(&U32_OUTPUT_BUFFER, sizeof(uint32_t) * total_threads);
+            cudaMalloc(&U32_OUTPUT_BUFFER, sizeof(uint32_t) * total_threads);
+            U32_OUTPUT_BUFFER_CPU = (uint32_t*) malloc(sizeof(uint32_t) * total_threads);
             U32_OUTPUT_BUFFER_SIZE = total_threads;
         }
 
@@ -121,19 +121,27 @@ extern  "C" {
         }
         cudaDeviceSynchronize();
 
+        cudaMemcpy(
+                U32_OUTPUT_BUFFER_CPU,
+                U32_OUTPUT_BUFFER,
+                sizeof(uint32_t) * (second_accumulate_on_gpu ? second_accumulate_on_gpu : total_threads),
+                cudaMemcpyDeviceToHost
+        );
+
         if (second_accumulate_on_gpu != 1) {
             if (second_accumulate_on_gpu) {
                 for (size_t i = 1; i < second_accumulate_on_gpu; i++) {
-                    U32_OUTPUT_BUFFER[0] += U32_OUTPUT_BUFFER[i];
+                    U32_OUTPUT_BUFFER_CPU[0] += U32_OUTPUT_BUFFER_CPU[i];
                 }
             } else {
                 for (size_t i = 1; i < total_threads; i++) {
-                    U32_OUTPUT_BUFFER[0] += U32_OUTPUT_BUFFER[i];
+                    U32_OUTPUT_BUFFER_CPU[0] += U32_OUTPUT_BUFFER_CPU[i];
                 }
             }
         }
-        uint32_t result = U32_OUTPUT_BUFFER[0];
+        uint32_t result = U32_OUTPUT_BUFFER_CPU[0];
 
         return result;
     }
+
 }

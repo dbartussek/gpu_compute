@@ -25,4 +25,5 @@ extern "C" {
         subgroup_size: usize,
         second_accumulate_on_gpu: usize,
     ) -> u32;
+    pub fn cuda_accumulate_u32_sum_subgroup() -> u32;
 }
