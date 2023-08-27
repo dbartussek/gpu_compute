@@ -246,6 +246,63 @@ fn criterion_benchmark(c: &mut Criterion) {
                 });
             },
         );
+        g.bench_with_input(
+            BenchmarkId::new(
+                "compute_buffer_to_buffer_atomic_subgroup_cpu_visible_memory",
+                y,
+            ),
+            &y,
+            |b, _| {
+                let shader =
+                    compute_none_subgroup_abuffer_loop::load(vulkan.device.clone()).unwrap();
+                let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
+                    &mut vulkan,
+                    data_size,
+                    &shader,
+                    compute_none_subgroup_abuffer_loop::SpecializationConstants {
+                        TEXTURE_SIZE_X: data_size.x as _,
+                        TEXTURE_SIZE_Y: 1,
+                    },
+                    ComputeParameters {
+                        output: OutputModification::SingleValue,
+                        clear_buffer: true,
+                        ..Default::default()
+                    },
+                    |a, b| a + b,
+                );
+
+                b.iter(|| {
+                    execute.run(&mut vulkan, false);
+                });
+            },
+        );
+        g.bench_with_input(
+            BenchmarkId::new("compute_buffer_to_buffer_atomic_add_cpu_visible_memory", y),
+            &y,
+            |b, _| {
+                let shader =
+                    compute_none_atomic_add_buffer_loop::load(vulkan.device.clone()).unwrap();
+                let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
+                    &mut vulkan,
+                    data_size,
+                    &shader,
+                    compute_none_atomic_add_buffer_loop::SpecializationConstants {
+                        TEXTURE_SIZE_X: data_size.x as _,
+                        TEXTURE_SIZE_Y: 1,
+                    },
+                    ComputeParameters {
+                        output: OutputModification::SingleValue,
+                        clear_buffer: true,
+                        ..ComputeParameters::default()
+                    },
+                    |a, b| a + b,
+                );
+
+                b.iter(|| {
+                    execute.run(&mut vulkan, false);
+                });
+            },
+        );
 
 
         if data_size.y % 4 == 0 {
@@ -376,6 +433,24 @@ mod compute_none_abuffer_loop {
         path: "shaders/instances/gpu_sum/buffer_none_abuffer_loop.glsl",
         include: ["shaders/pluggable"],
         define: [("COMPUTE_SHADER", "1")],
+        spirv_version: "1.3",
+    }
+}
+mod compute_none_atomic_add_buffer_loop {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "shaders/instances/gpu_sum/buffer_none_atomic_add_buffer_loop.glsl",
+        include: ["shaders/pluggable"],
+        define: [("COMPUTE_SHADER", "1")],
+    }
+}
+mod compute_none_subgroup_abuffer_loop {
+    vulkano_shaders::shader! {
+        ty: "compute",
+        path: "shaders/instances/gpu_sum/buffer_none_subgroup_abuffer_loop.glsl",
+        include: ["shaders/pluggable"],
+        define: [("COMPUTE_SHADER", "1")],
+        spirv_version: "1.3",
     }
 }
 

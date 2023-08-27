@@ -35,10 +35,11 @@ use vulkano::{
 enum Subgroup {
     subgroup,
     quad,
+    count,
 }
 
 fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod, subgroup_type: Subgroup) {
-    const FORMAT: Format = Format::R16G16_UINT;
+    const FORMAT: Format = Format::R8G8B8A8_UINT;
 
     let render_pass = vulkan.create_render_pass(RenderPassKey {
         format: Some(FORMAT),
@@ -48,6 +49,7 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod, subgroup
     let fs = match subgroup_type {
         Subgroup::subgroup => fs_subgroup::load(vulkan.device.clone()).unwrap(),
         Subgroup::quad => fs_quad::load(vulkan.device.clone()).unwrap(),
+        Subgroup::count => fs_subgroup_count::load(vulkan.device.clone()).unwrap(),
     };
 
     let subpass = Subpass::from(render_pass.clone(), 0).unwrap();
@@ -118,7 +120,7 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod, subgroup
         .end_render_pass()
         .unwrap();
 
-    let read_buffer: Subbuffer<[[u16; 2]]> =
+    let read_buffer: Subbuffer<[[u8; 4]]> =
         vulkan.download_image(&mut command_buffer, target.clone());
 
     let future = command_buffer
@@ -139,10 +141,6 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod, subgroup
         *group_counts.entry(s).or_insert(0usize) += 1;
     }
 
-    // let rg: Vec<u8> = raw_samples.iter().map(|v| [v[0] as u8, v[1] as u8,
-    // 0]).flatten().collect_vec(); let rg = RgbImage::from_vec(size.x, size.y,
-    // rg).unwrap();
-
     let hashed: Vec<u8> = raw_samples
         .iter()
         .map(|v| Sha3_256::digest(cast_slice(v)).into_iter().take(3))
@@ -155,7 +153,46 @@ fn run(vulkan: &mut VulkanData, size: Vector2<u32>, method: QuadMethod, subgroup
         size.x, size.y, method, subgroup_type
     );
     hashed.save(format!("{name}.hashed.png")).unwrap();
-    // rg.save(format!("{name}.rg.png")).unwrap();
+
+
+    if subgroup_type == Subgroup::count {
+        let rg: Vec<u8> = raw_samples
+            .iter()
+            .map(|v| [v[0], v[1], v[2]])
+            .flatten()
+            .collect_vec();
+        let rg = RgbImage::from_vec(size.x, size.y, rg).unwrap();
+        rg.save(format!("{name}.rg.png")).unwrap();
+
+        let mut min_active = 1.0f32;
+
+        let ratio: Vec<u8> = raw_samples
+            .iter()
+            .map(|v| {
+                // let total = (v[1] + v[2]) as f32;
+                let total = v[0] as f32;
+                let active = v[1] as f32;
+                let ratio = active / total;
+                min_active = min_active.min(ratio);
+
+                ratio
+            })
+            .collect_vec()
+            .into_iter()
+            .map(|ratio| {
+                let mapped_ratio = (ratio - min_active) / (1.0 - min_active);
+
+                let blue = (mapped_ratio * (u8::MAX as f32)) as u8;
+                let red = ((1.0 - mapped_ratio) * (u8::MAX as f32)) as u8;
+
+                [red, blue, 0]
+            })
+            .flatten()
+            .collect();
+        let ratio = RgbImage::from_vec(size.x, size.y, ratio).unwrap();
+        ratio.save(format!("{name}.ratio.png")).unwrap();
+        std::fs::write(format!("{name}.ratio.min.txt"), min_active.to_string()).unwrap();
+    }
 
     std::fs::write(
         format!("{name}.json"),
@@ -169,10 +206,13 @@ fn main() {
     let _ = std::fs::remove_dir_all("subgroups");
     let _ = std::fs::create_dir_all("subgroups");
 
-    for x in [1, 2, 8, 16, 32, 64, 128, 256, 31] {
-        for y in [1, 2, 8, 16, 32, 64, 128, 256, 31] {
+    // for x in [1, 2, 8, 16, 32, 64, 128, 256, 31] {
+    //    for y in [1, 2, 8, 16, 32, 64, 128, 256, 31] {
+    for x in [1, 32] {
+        for y in [1, 32] {
             for method in QuadMethod::all(&vulkan) {
                 run(&mut vulkan, Vector2::new(x, y), *method, Subgroup::subgroup);
+                run(&mut vulkan, Vector2::new(x, y), *method, Subgroup::count);
             }
             run(
                 &mut vulkan,
@@ -195,6 +235,14 @@ mod fs_subgroup {
         ty: "fragment",
         spirv_version: "1.3",
         path: "shaders/instances/subgroup_find.glsl",
+        include: ["shaders/pluggable"],
+    }
+}
+mod fs_subgroup_count {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        spirv_version: "1.3",
+        path: "shaders/instances/subgroup_count.glsl",
         include: ["shaders/pluggable"],
     }
 }

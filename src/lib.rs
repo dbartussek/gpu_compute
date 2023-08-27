@@ -5,7 +5,7 @@ pub mod execute_util;
 pub mod execute_util_compute;
 pub mod vulkan_util;
 
-use std::ffi::{c_int, c_void};
+use std::ffi::c_int;
 
 #[link(name = "an_external_function")]
 extern "C" {
@@ -17,9 +17,9 @@ extern "C" {
 #[cfg(feature = "cuda")]
 #[link(name = "cuda_accumulate", kind = "static")]
 extern "C" {
-    pub fn cuda_empty_kernel() -> c_void;
+    pub fn cuda_empty_kernel() -> std::ffi::c_void;
 
-    pub fn cuda_accumulate_u32_set_data(data: *const u32, data_size: usize) -> c_void;
+    pub fn cuda_accumulate_u32_set_data(data: *const u32, data_size: usize) -> std::ffi::c_void;
     pub fn cuda_accumulate_u32_sum(
         total_threads: usize,
         subgroup_size: usize,

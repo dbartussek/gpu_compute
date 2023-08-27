@@ -1,14 +1,11 @@
 #version 460
 
-#extension GL_KHR_shader_subgroup_basic : require
-#extension GL_KHR_shader_subgroup_arithmetic : require
-
 #include <prelude.glsl>
 
 #include <raw_get_data/storage_buffer.glsl>
 #include <get_data/loop.glsl>
 #include <discarder/none.glsl>
-#include <writer/subgroup_add_buffer.glsl>
+#include <writer/atomic_add_buffer.glsl>
 
 bool condition(int x, int y, int z, DATA_TYPE data) {
     return true;

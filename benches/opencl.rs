@@ -100,6 +100,21 @@ fn criterion_benchmark(c: &mut Criterion) {
         g.measurement_time(Duration::from_secs(30));
         // g.sample_size(1000);
 
+        {
+            g.bench_function("opencl_empty", |b| {
+                let cl_program = ProQue::builder()
+                    .src(r#"__kernel void empty() {}"#)
+                    .dims(1)
+                    .build()
+                    .unwrap();
+                let kernel = cl_program.kernel_builder("empty").build().unwrap();
+
+                b.iter(|| {
+                    unsafe { kernel.enq() }.unwrap();
+                });
+            });
+        }
+
         do_cl_bench::<u32, _>(
             &mut g,
             1,

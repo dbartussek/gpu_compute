@@ -1,5 +1,7 @@
 #version 460
 
+#extension GL_KHR_shader_subgroup_basic: require
+
 #include <prelude.glsl>
 
 #include <raw_get_data/storage_buffer.glsl>
