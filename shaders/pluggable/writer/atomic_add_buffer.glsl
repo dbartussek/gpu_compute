@@ -9,5 +9,7 @@ void main() {
 
     GetData d = get_data_discarder(coord.x, coord.y);
 
-    atomicAdd(out_value, d.data);
+    if (!d.do_discard) {
+        atomicAdd(out_value, d.data);
+    }
 }

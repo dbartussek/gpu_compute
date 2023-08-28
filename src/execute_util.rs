@@ -65,6 +65,8 @@ pub struct ExecuteUtil<Type> {
     expected_result: Type,
 
     accumulate: Box<dyn Fn(Type, Type) -> Type>,
+
+    data_size: u32,
 }
 
 
@@ -184,6 +186,7 @@ where
         fs: &ShaderModule,
         sc: SC,
         params: ExecuteParameters,
+        data_size: u32,
 
         accumulate: Acc,
 
@@ -250,6 +253,7 @@ where
             expected_result,
             parameters: params,
             accumulate: Box::new(accumulate),
+            data_size,
         }
     }
 
@@ -278,6 +282,7 @@ where
             fs,
             sc,
             params.clone(),
+            total,
             accumulate,
             move |vulkan, pipeline| {
                 let mut command_buffer = vulkan.create_command_buffer();
@@ -333,7 +338,8 @@ where
         SC: SpecializationConstants,
         Acc: 'static + Fn(Type, Type) -> Type,
     {
-        let raw_data = generate_data(data_size.x * data_size.y).collect_vec();
+        let total = data_size.x * data_size.y;
+        let raw_data = generate_data(total).collect_vec();
         let expected = raw_data.iter().copied().reduce(&accumulate).unwrap();
 
         let mut executor = Self::generic_setup(
@@ -341,6 +347,7 @@ where
             fs,
             sc,
             params.clone(),
+            total,
             accumulate,
             |vulkan, pipeline| {
                 let mut command_buffer = vulkan.create_command_buffer();
@@ -436,6 +443,7 @@ where
                 self.set.clone(),
             )
             .bind_vertex_buffers(0, vulkan.vertex_buffer())
+            .push_constants(self.pipeline.layout().clone(), 0, self.data_size)
             .draw(
                 if self.parameters.quad_method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3},
                 if self.parameters.use_instances_and_blend {self.instance_id} else {1},
@@ -557,6 +565,7 @@ where
                 target_set,
             )
             .bind_vertex_buffers(0, vulkan.vertex_buffer())
+            .push_constants(self.pipeline.layout().clone(), 0, self.data_size)
             .draw(if self.parameters.quad_method == QuadMethod::two_triangles {vulkan.vertex_buffer().len() as _} else {3}, 1, 0, self.instance_id)
             .unwrap()
 

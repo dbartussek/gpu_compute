@@ -11,7 +11,6 @@ const uint WORKGROUP_SIZE = 64;
 
 layout(local_size_x = WORKGROUP_SIZE, local_size_y = 1) in;
 
-layout(push_constant) uniform pc_l{ int z; } pc;
 int get_z() {
     return pc.z;
 }
