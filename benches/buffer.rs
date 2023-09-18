@@ -247,10 +247,14 @@ fn criterion_benchmark(c: &mut Criterion) {
             },
         );
         g.bench_with_input(
-            BenchmarkId::new("compute_buffer_to_buffer_subgroup_decimate_cpu_visible_memory", y),
+            BenchmarkId::new(
+                "compute_buffer_to_buffer_subgroup_decimate_cpu_visible_memory",
+                y,
+            ),
             &y,
             |b, _| {
-                let shader = compute_none_groupbuffer_decimate_loop::load(vulkan.device.clone()).unwrap();
+                let shader =
+                    compute_none_groupbuffer_decimate_loop::load(vulkan.device.clone()).unwrap();
                 let mut execute = ComputeExecuteUtil::<u32>::setup_storage_buffer(
                     &mut vulkan,
                     data_size,
@@ -302,10 +306,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             },
         );
         g.bench_with_input(
-            BenchmarkId::new(
-                "compute_none_subgroup_casbuffer_loop",
-                y,
-            ),
+            BenchmarkId::new("compute_none_subgroup_casbuffer_loop", y),
             &y,
             |b, _| {
                 let shader =
@@ -391,7 +392,10 @@ fn criterion_benchmark(c: &mut Criterion) {
             },
         );
         g.bench_with_input(
-            BenchmarkId::new("compute_buffer_to_buffer_atomic_add_cpu_visible_memory_65536_threads", y),
+            BenchmarkId::new(
+                "compute_buffer_to_buffer_atomic_add_cpu_visible_memory_65536_threads",
+                y,
+            ),
             &y,
             |b, _| {
                 let shader =

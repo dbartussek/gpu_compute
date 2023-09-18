@@ -186,40 +186,38 @@ where
     pub fn run(&mut self, vulkan: &mut VulkanData, separate_read_buffer: bool) {
         let mut command_buffer = vulkan.create_command_buffer();
 
-        let thread_count = self.parameters.override_thread_count.unwrap_or(self.viewport_size.x);
+        let thread_count = self
+            .parameters
+            .override_thread_count
+            .unwrap_or(self.viewport_size.x);
 
-        let target: Subbuffer<[Type]> = Buffer::new_slice(
-            &vulkan.memory_allocator,
-            BufferCreateInfo {
-                usage: BufferUsage::STORAGE_BUFFER
-                    | BufferUsage::TRANSFER_SRC
-                    | BufferUsage::TRANSFER_DST,
-                ..Default::default()
-            },
-            AllocationCreateInfo {
-                usage: if separate_read_buffer {
-                    MemoryUsage::DeviceOnly
-                } else {
-                    MemoryUsage::Download
+        let target: Subbuffer<[Type]> =
+            Buffer::new_slice(
+                &vulkan.memory_allocator,
+                BufferCreateInfo {
+                    usage: BufferUsage::STORAGE_BUFFER
+                        | BufferUsage::TRANSFER_SRC
+                        | BufferUsage::TRANSFER_DST,
+                    ..Default::default()
                 },
-                ..Default::default()
-            },
-            match self.parameters.output {
-                OutputModification::OneForOne => {
-                    (thread_count) as DeviceSize
+                AllocationCreateInfo {
+                    usage: if separate_read_buffer {
+                        MemoryUsage::DeviceOnly
+                    } else {
+                        MemoryUsage::Download
+                    },
+                    ..Default::default()
                 },
-                OutputModification::SingleValue => 1,
-                OutputModification::OnePerSubgroup => {
-                    ((thread_count) as DeviceSize)
+                match self.parameters.output {
+                    OutputModification::OneForOne => (thread_count) as DeviceSize,
+                    OutputModification::SingleValue => 1,
+                    OutputModification::OnePerSubgroup => ((thread_count) as DeviceSize)
                         .div_ceil(vulkan.physical_device.properties().subgroup_size.unwrap()
-                            as DeviceSize)
-                },
-                OutputModification::FixedSize(size) => {
-                    size.max((thread_count) as DeviceSize)
-                },
-            } * (self.parameters.vectorization_factor as DeviceSize),
-        )
-        .unwrap();
+                            as DeviceSize),
+                    OutputModification::FixedSize(size) => size.max((thread_count) as DeviceSize),
+                } * (self.parameters.vectorization_factor as DeviceSize),
+            )
+            .unwrap();
         let read_buffer = if separate_read_buffer {
             Buffer::new_slice(
                 &vulkan.memory_allocator,
