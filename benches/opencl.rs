@@ -183,8 +183,10 @@ pub mod all {
 
 #[cfg(not(feature = "opencl"))]
 pub mod all {
-    use criterion::criterion_group;
+    use criterion::{criterion_group, Criterion};
 
+    fn criterion_benchmark(_: &mut Criterion) {
+    }
     criterion_group!(benches, criterion_benchmark);
 }
 
