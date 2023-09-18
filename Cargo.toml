@@ -12,6 +12,7 @@ qutex = { git = "https://github.com/dbartussek/qutex.git" }
 [features]
 fill_rectangle = []
 cuda = []
+opencl = []
 
 [dependencies]
 byte-unit = "4.0.19"
