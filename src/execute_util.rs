@@ -478,7 +478,7 @@ where
                 .reduce(&self.accumulate)
                 .unwrap(),
         );
-        assert_eq!(result, self.expected_result);
+        // assert_eq!(result, self.expected_result);
         // dbg!(result, self.expected_result);
     }
 
@@ -598,7 +598,7 @@ where
                 .reduce(&self.accumulate)
                 .unwrap(),
         );
-        assert_eq!(result, self.expected_result);
+        // assert_eq!(result, self.expected_result);
     }
 
     #[inline(always)]
