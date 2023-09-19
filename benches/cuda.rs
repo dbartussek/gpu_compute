@@ -30,7 +30,7 @@ mod imp {
                             gpu_compute::cuda_accumulate_u32_sum(
                                 kernel_size as usize,
                                 kernel_size.min(256) as usize,
-                                1,
+                                0,
                             )
                         };
                         // assert_eq!(result_sum, expected);

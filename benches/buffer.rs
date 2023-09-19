@@ -69,7 +69,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                                 &shader,
                                 attach_none_sampled_loop::SpecializationConstants {
                                     TEXTURE_SIZE_X: (data_size.x / framebuffer_y) as _,
-                                    TEXTURE_SIZE_Y: data_size.y as _,
+                                    TEXTURE_SIZE_Y: framebuffer_y as _,
                                 },
                                 ExecuteParameters {
                                     output: OutputKind::Attachment,

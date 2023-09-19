@@ -62,20 +62,21 @@ fn main() {
     )
     .unwrap();
 
-    let data_size = Vector2::<u32>::new(256 * 32, args.data_size.div_ceil(32 * 256));
+    let data_size = Vector2::<u32>::new(16384, args.data_size.div_ceil(16384));
+    println!("{:?}", data_size);
 
-    let shader = compute_none_sbuffer_loop::load(vulkan.device.clone()).unwrap();
-    let mut execute = ExecuteUtil::<u32>::setup_storage_buffer(
+    let shader = attach_none_sampled_loop::load(vulkan.device.clone()).unwrap();
+    let mut execute = ExecuteUtil::<u32>::setup_2d_sampler(
         &mut vulkan,
         data_size,
         &shader,
-        compute_none_sbuffer_loop::SpecializationConstants {
+        attach_none_sampled_loop::SpecializationConstants {
             TEXTURE_SIZE_X: (data_size.x / args.framebuffer_y) as _,
             TEXTURE_SIZE_Y: args.framebuffer_y as _,
         },
         ExecuteParameters {
-            output: OutputKind::Buffer,
-            quad_method: QuadMethod::two_triangles,
+            output: OutputKind::Attachment,
+            quad_method: QuadMethod::large_triangle,
             framebuffer_y: args.framebuffer_y,
             ..Default::default()
         },
@@ -115,6 +116,7 @@ fn main() {
                 control.set_exit();
             } else {
                 std::thread::sleep(Duration::from_millis(10));
+                control.set_exit();
             }
         },
         Event::RedrawRequested(_) => {},
@@ -123,11 +125,10 @@ fn main() {
     });
 }
 
-mod compute_none_sbuffer_loop {
+mod attach_none_sampled_loop {
     vulkano_shaders::shader! {
         ty: "fragment",
-        path: "shaders/instances/gpu_sum/buffer_none_sbuffer_loop.glsl",
+        path: "shaders/instances/gpu_sum/attach_none_sampled2D_loop.glsl",
         include: ["shaders/pluggable"],
-        // define: [("COMPUTE_SHADER", "1")],
     }
 }
