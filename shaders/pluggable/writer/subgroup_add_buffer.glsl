@@ -10,7 +10,7 @@ void main() {
     // gl_SubgroupSize
     // gl_SubgroupInvocationID
 
-    GetData d = get_data_discarder(coord.x, coord.y);
+    GetData d = get_data(coord.x, coord.y);
     OUTPUT_DATA_TYPE subgroup_result = subgroupAdd(d.data);
 
     if (gl_SubgroupInvocationID == 0) {

@@ -8,7 +8,6 @@
 
 #include <raw_get_data/storage_buffer.glsl>
 #include <get_data/loop.glsl>
-#include <discarder/none.glsl>
 #include <writer/buffer.glsl>
 
 bool condition(int x, int y, int z, DATA_TYPE data) {

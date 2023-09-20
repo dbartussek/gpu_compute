@@ -6,7 +6,7 @@ layout(set = 1, binding = 0, std430) writeonly buffer out_buffer {
 
 void main() {
     ivec2 coord = get_coord();
-    GetData d = get_data_discarder(coord.x, coord.y);
+    GetData d = get_data(coord.x, coord.y);
 
 
     DATA_TYPE acc = d.data;
